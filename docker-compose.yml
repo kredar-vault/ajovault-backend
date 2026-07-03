@@ -1,0 +1,31 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8081:8080"
+    env_file:
+      - .env
+    environment:
+      - ConnectionStrings__DefaultConnection=Host=db;Port=5432;Database=ajovault_dev;Username=postgres;Password=postgres
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ajovault_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

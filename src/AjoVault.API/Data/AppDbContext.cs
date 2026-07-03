@@ -1,0 +1,55 @@
+using AjoVault.API.Auth;
+using AjoVault.API.Contributions;
+using AjoVault.API.Groups;
+using AjoVault.API.Payouts;
+using Microsoft.EntityFrameworkCore;
+
+namespace AjoVault.API.Data;
+
+public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+{
+    public DbSet<User> Users => Set<User>();
+    public DbSet<SavingsGroup> SavingsGroups => Set<SavingsGroup>();
+    public DbSet<GroupMember> GroupMembers => Set<GroupMember>();
+    public DbSet<Contribution> Contributions => Set<Contribution>();
+    public DbSet<Payout> Payouts => Set<Payout>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<User>(e =>
+        {
+            e.HasKey(u => u.Id);
+            e.HasIndex(u => u.Email).IsUnique();
+            e.Property(u => u.Email).IsRequired();
+        });
+
+        modelBuilder.Entity<SavingsGroup>(e =>
+        {
+            e.HasKey(g => g.Id);
+            e.Property(g => g.Frequency).HasConversion<string>();
+            e.Property(g => g.Status).HasConversion<string>();
+            e.Property(g => g.ContributionAmount).HasPrecision(18, 2);
+        });
+
+        modelBuilder.Entity<GroupMember>(e =>
+        {
+            e.HasKey(m => m.Id);
+            e.HasIndex(m => new { m.GroupId, m.UserId }).IsUnique();
+        });
+
+        modelBuilder.Entity<Contribution>(e =>
+        {
+            e.HasKey(c => c.Id);
+            e.HasIndex(c => new { c.GroupId, c.UserId, c.CycleNumber }).IsUnique();
+            e.Property(c => c.Amount).HasPrecision(18, 2);
+        });
+
+        modelBuilder.Entity<Payout>(e =>
+        {
+            e.HasKey(p => p.Id);
+            e.HasIndex(p => new { p.GroupId, p.CycleNumber }).IsUnique();
+            e.Property(p => p.Status).HasConversion<string>();
+            e.Property(p => p.Amount).HasPrecision(18, 2);
+        });
+    }
+}
