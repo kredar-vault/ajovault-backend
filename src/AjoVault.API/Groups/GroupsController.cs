@@ -37,7 +37,7 @@ public class GroupsController(GroupsService groupsService) : ControllerBase
     {
         var userId = UserContext.GetUserId(HttpContext);
         var group = await groupsService.CreateAsync(userId, request);
-        return Ok(ApiResponse<GroupResponse>.Success(group, "Savings group created successfully."));
+        return Ok(ApiResponse<GroupResponse>.Success(group, "Savings circle created successfully."));
     }
 
     [HttpPost("{id:guid}/join")]
@@ -45,6 +45,21 @@ public class GroupsController(GroupsService groupsService) : ControllerBase
     {
         var userId = UserContext.GetUserId(HttpContext);
         var group = await groupsService.JoinAsync(userId, id);
-        return Ok(ApiResponse<GroupResponse>.Success(group, "Joined savings group successfully."));
+        return Ok(ApiResponse<GroupResponse>.Success(group, "Joined savings circle successfully."));
+    }
+
+    [HttpPost("join/{inviteCode}")]
+    public async Task<IActionResult> JoinByInviteCode(string inviteCode)
+    {
+        var userId = UserContext.GetUserId(HttpContext);
+        var group = await groupsService.JoinByInviteCodeAsync(userId, inviteCode);
+        return Ok(ApiResponse<GroupResponse>.Success(group, "Joined savings circle successfully."));
+    }
+
+    [HttpGet("{id:guid}/invite")]
+    public async Task<IActionResult> GetInviteLink(Guid id)
+    {
+        var link = await groupsService.GetInviteLinkAsync(id);
+        return Ok(ApiResponse<object>.Success(new { inviteLink = link }));
     }
 }

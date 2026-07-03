@@ -50,4 +50,7 @@ public class GroupRepository(AppDbContext db)
             .OrderByDescending(g => g.CreatedAt)
             .ToListAsync();
     }
+
+    public async Task<SavingsGroup?> FindByInviteCodeAsync(string inviteCode) =>
+        await db.SavingsGroups.FirstOrDefaultAsync(g => g.InviteCode == inviteCode);
 }

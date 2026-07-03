@@ -6,18 +6,25 @@ using Microsoft.AspNetCore.Mvc;
 namespace AjoVault.API.Contributions;
 
 [ApiController]
-[Route("api/v1/groups/{groupId:guid}/contributions")]
 [Authorize]
 public class ContributionsController(ContributionsService contributionsService) : ControllerBase
 {
-    [HttpGet]
-    public async Task<IActionResult> GetAll(Guid groupId)
+    [HttpGet("api/v1/contributions")]
+    public async Task<IActionResult> GetAll()
+    {
+        var userId = UserContext.GetUserId(HttpContext);
+        var contributions = await contributionsService.GetAllByUserAsync(userId);
+        return Ok(ApiResponse<List<ContributionResponse>>.Success(contributions));
+    }
+
+    [HttpGet("api/v1/groups/{groupId:guid}/contributions")]
+    public async Task<IActionResult> GetByGroup(Guid groupId)
     {
         var contributions = await contributionsService.GetByGroupAsync(groupId);
         return Ok(ApiResponse<List<ContributionResponse>>.Success(contributions));
     }
 
-    [HttpGet("mine")]
+    [HttpGet("api/v1/groups/{groupId:guid}/contributions/mine")]
     public async Task<IActionResult> GetMine(Guid groupId)
     {
         var userId = UserContext.GetUserId(HttpContext);
@@ -25,7 +32,7 @@ public class ContributionsController(ContributionsService contributionsService) 
         return Ok(ApiResponse<List<ContributionResponse>>.Success(contributions));
     }
 
-    [HttpPost]
+    [HttpPost("api/v1/groups/{groupId:guid}/contributions")]
     public async Task<IActionResult> Record(Guid groupId, [FromBody] RecordContributionRequest request)
     {
         var userId = UserContext.GetUserId(HttpContext);

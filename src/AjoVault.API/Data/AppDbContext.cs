@@ -21,6 +21,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasKey(u => u.Id);
             e.HasIndex(u => u.Email).IsUnique();
             e.Property(u => u.Email).IsRequired();
+            e.Property(u => u.AccountNumber).HasMaxLength(20);
         });
 
         modelBuilder.Entity<SavingsGroup>(e =>
@@ -29,6 +30,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(g => g.Frequency).HasConversion<string>();
             e.Property(g => g.Status).HasConversion<string>();
             e.Property(g => g.ContributionAmount).HasPrecision(18, 2);
+            e.HasIndex(g => g.InviteCode).IsUnique();
+            e.Property(g => g.InviteCode).HasMaxLength(100);
         });
 
         modelBuilder.Entity<GroupMember>(e =>
@@ -42,6 +45,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasKey(c => c.Id);
             e.HasIndex(c => new { c.GroupId, c.UserId, c.CycleNumber }).IsUnique();
             e.Property(c => c.Amount).HasPrecision(18, 2);
+            e.Property(c => c.Status).HasConversion<string>();
+            e.Property(c => c.Reference).HasMaxLength(20);
         });
 
         modelBuilder.Entity<Payout>(e =>

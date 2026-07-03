@@ -18,7 +18,8 @@ public class AuthService(UserRepository userRepo, JwtService jwtService)
             FullName = request.FullName,
             Email = request.Email,
             PhoneNumber = request.PhoneNumber,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password, workFactor: 10)
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password, workFactor: 10),
+            AccountNumber = GenerateAccountNumber()
         };
 
         await userRepo.AddAsync(user);
@@ -47,5 +48,21 @@ public class AuthService(UserRepository userRepo, JwtService jwtService)
             FullName = user.FullName,
             Email = user.Email
         };
+    }
+
+    public async Task ForgotPasswordAsync(string email)
+    {
+        // If email doesn't exist, we still return success to prevent email enumeration
+        var user = await userRepo.FindByEmailAsync(email);
+        if (user == null) return;
+
+        // In production, send reset email via Resend here
+        // For hackathon: no-op but endpoint is wired
+    }
+
+    private static string GenerateAccountNumber()
+    {
+        var random = new Random();
+        return string.Concat(Enumerable.Range(0, 10).Select(_ => random.Next(10).ToString()));
     }
 }

@@ -1,8 +1,10 @@
 using System.Text;
+using AjoVault.API.Account;
 using AjoVault.API.Auth;
 using AjoVault.API.Common;
 using AjoVault.API.Config;
 using AjoVault.API.Contributions;
+using AjoVault.API.Dashboard;
 using AjoVault.API.Data;
 using AjoVault.API.Groups;
 using AjoVault.API.Payouts;
@@ -21,6 +23,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 // Settings
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
+builder.Services.Configure<AppSettings>(builder.Configuration.GetSection("AppSettings"));
 
 // JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>()!;
@@ -41,7 +44,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
-// CORS
+// CORS — allow frontend on localhost:3000
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
@@ -65,6 +68,9 @@ builder.Services.AddScoped<ContributionRepository>();
 builder.Services.AddScoped<ContributionsService>();
 builder.Services.AddScoped<PayoutRepository>();
 builder.Services.AddScoped<PayoutsService>();
+builder.Services.AddScoped<DashboardService>();
+builder.Services.AddScoped<AccountService>();
+
 
 // Exception handler
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();

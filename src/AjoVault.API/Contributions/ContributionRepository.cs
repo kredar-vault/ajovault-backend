@@ -21,6 +21,12 @@ public class ContributionRepository(AppDbContext db)
         await db.Contributions.FirstOrDefaultAsync(c =>
             c.GroupId == groupId && c.UserId == userId && c.CycleNumber == cycleNumber);
 
+    public async Task<List<Contribution>> GetAllByUserGroupsAsync(IEnumerable<Guid> groupIds) =>
+        await db.Contributions
+            .Where(c => groupIds.Contains(c.GroupId))
+            .OrderByDescending(c => c.PaidAt)
+            .ToListAsync();
+
     public async Task AddAsync(Contribution contribution)
     {
         await db.Contributions.AddAsync(contribution);

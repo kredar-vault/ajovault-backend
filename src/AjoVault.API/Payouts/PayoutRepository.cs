@@ -20,6 +20,18 @@ public class PayoutRepository(AppDbContext db)
         await db.SaveChangesAsync();
     }
 
+    public async Task<List<Payout>> GetUpcomingByUserAsync(Guid userId) =>
+        await db.Payouts
+            .Where(p => p.RecipientUserId == userId && p.Status == PayoutStatus.Scheduled)
+            .OrderBy(p => p.ScheduledDate)
+            .ToListAsync();
+
+    public async Task<List<Payout>> GetByGroupIdsAsync(IEnumerable<Guid> groupIds) =>
+        await db.Payouts
+            .Where(p => groupIds.Contains(p.GroupId))
+            .OrderBy(p => p.ScheduledDate)
+            .ToListAsync();
+
     public async Task UpdateAsync(Payout payout)
     {
         db.Payouts.Update(payout);

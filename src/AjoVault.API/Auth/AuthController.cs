@@ -21,4 +21,11 @@ public class AuthController(AuthService authService) : ControllerBase
         var result = await authService.LoginAsync(request);
         return Ok(ApiResponse<AuthResponse>.Success(result, "Login successful."));
     }
+
+    [HttpPost("forgot-password")]
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
+    {
+        await authService.ForgotPasswordAsync(request.Email);
+        return Ok(ApiResponse<object>.Success(new { }, "If this email is registered, a reset link has been sent."));
+    }
 }

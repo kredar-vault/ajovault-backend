@@ -6,18 +6,25 @@ using Microsoft.AspNetCore.Mvc;
 namespace AjoVault.API.Payouts;
 
 [ApiController]
-[Route("api/v1/groups/{groupId:guid}/payouts")]
 [Authorize]
 public class PayoutsController(PayoutsService payoutsService) : ControllerBase
 {
-    [HttpGet]
-    public async Task<IActionResult> GetAll(Guid groupId)
+    [HttpGet("api/v1/payouts/upcoming")]
+    public async Task<IActionResult> GetUpcoming()
+    {
+        var userId = UserContext.GetUserId(HttpContext);
+        var payouts = await payoutsService.GetUpcomingByUserAsync(userId);
+        return Ok(ApiResponse<List<PayoutResponse>>.Success(payouts));
+    }
+
+    [HttpGet("api/v1/groups/{groupId:guid}/payouts")]
+    public async Task<IActionResult> GetByGroup(Guid groupId)
     {
         var payouts = await payoutsService.GetByGroupAsync(groupId);
         return Ok(ApiResponse<List<PayoutResponse>>.Success(payouts));
     }
 
-    [HttpPost("{payoutId:guid}/disburse")]
+    [HttpPost("api/v1/groups/{groupId:guid}/payouts/{payoutId:guid}/disburse")]
     public async Task<IActionResult> Disburse(Guid groupId, Guid payoutId)
     {
         var userId = UserContext.GetUserId(HttpContext);

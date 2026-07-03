@@ -1,24 +1,36 @@
 using AjoVault.API.Auth;
+using AjoVault.API.Config;
+using AjoVault.API.Contributions;
 using AjoVault.API.Groups.Dto;
 using AjoVault.API.Payouts;
+using Microsoft.Extensions.Options;
 
 namespace AjoVault.API.Groups;
 
-public class GroupsService(GroupRepository groupRepo, UserRepository userRepo, PayoutRepository payoutRepo)
+public class GroupsService(
+    GroupRepository groupRepo,
+    UserRepository userRepo,
+    PayoutRepository payoutRepo,
+    ContributionRepository contributionRepo,
+    IOptions<AppSettings> appSettings)
 {
+    private readonly string _baseUrl = appSettings.Value.BaseUrl;
+
     public async Task<GroupResponse> CreateAsync(Guid userId, CreateGroupRequest request)
     {
         if (!Enum.TryParse<ContributionFrequency>(request.Frequency, true, out var frequency))
-            throw new InvalidOperationException("Frequency must be 'Weekly' or 'Monthly'.");
+            throw new InvalidOperationException("Frequency must be 'Weekly', 'BiWeekly', or 'Monthly'.");
 
         var group = new SavingsGroup
         {
             Name = request.Name,
             Description = request.Description,
+            PrimaryPurpose = request.PrimaryPurpose,
             ContributionAmount = request.ContributionAmount,
             Frequency = frequency,
             MaxMembers = request.MaxMembers,
-            CreatedByUserId = userId
+            CreatedByUserId = userId,
+            InviteCode = GenerateInviteCode(request.Name)
         };
 
         await groupRepo.AddAsync(group);
@@ -54,25 +66,47 @@ public class GroupsService(GroupRepository groupRepo, UserRepository userRepo, P
         var users = await userRepo.FindByIdsAsync(members.Select(m => m.UserId));
         var userLookup = users.ToDictionary(u => u.Id, u => u.FullName);
 
+        var currentCycle = GetCurrentCycleNumber(group);
+        var contributions = currentCycle > 0
+            ? await contributionRepo.GetByGroupAsync(groupId)
+            : [];
+
+        var paidUserIds = contributions
+            .Where(c => c.CycleNumber == currentCycle)
+            .Select(c => c.UserId)
+            .ToHashSet();
+
+        var nextPayoutPosition = await GetNextPayoutPositionAsync(groupId);
+
+        var memberCount = members.Count;
+        var base_ = await MapToResponseBaseAsync(group, memberCount);
         var response = new GroupDetailResponse
         {
-            Id = group.Id,
-            Name = group.Name,
-            Description = group.Description,
-            ContributionAmount = group.ContributionAmount,
-            Frequency = group.Frequency.ToString(),
-            MaxMembers = group.MaxMembers,
-            CurrentMembers = members.Count,
-            CreatedByUserId = group.CreatedByUserId,
-            Status = group.Status.ToString(),
-            StartDate = group.StartDate,
-            CreatedAt = group.CreatedAt,
+            Id = base_.Id,
+            Name = base_.Name,
+            Description = base_.Description,
+            PrimaryPurpose = base_.PrimaryPurpose,
+            ContributionAmount = base_.ContributionAmount,
+            TotalPool = base_.TotalPool,
+            Frequency = base_.Frequency,
+            MaxMembers = base_.MaxMembers,
+            CurrentMembers = base_.CurrentMembers,
+            CreatedByUserId = base_.CreatedByUserId,
+            Status = base_.Status,
+            StartDate = base_.StartDate,
+            CreatedAt = base_.CreatedAt,
+            InviteCode = base_.InviteCode,
+            InviteLink = base_.InviteLink,
             Members = members.Select(m => new GroupMemberResponse
             {
                 UserId = m.UserId,
                 FullName = userLookup.GetValueOrDefault(m.UserId, "Unknown"),
                 PayoutPosition = m.PayoutPosition,
-                JoinedAt = m.JoinedAt
+                JoinedAt = m.JoinedAt,
+                ContributionStatus = currentCycle > 0
+                    ? (paidUserIds.Contains(m.UserId) ? "Paid" : IsOverdue(group, currentCycle) ? "Missed" : "Pending")
+                    : "Pending",
+                IsNextPayout = m.PayoutPosition == nextPayoutPosition
             }).ToList()
         };
 
@@ -84,14 +118,35 @@ public class GroupsService(GroupRepository groupRepo, UserRepository userRepo, P
         var group = await groupRepo.FindByIdAsync(groupId)
             ?? throw new KeyNotFoundException("Savings group not found.");
 
+        return await JoinGroupAsync(userId, group);
+    }
+
+    public async Task<GroupResponse> JoinByInviteCodeAsync(Guid userId, string inviteCode)
+    {
+        var group = await groupRepo.FindByInviteCodeAsync(inviteCode)
+            ?? throw new KeyNotFoundException("Invalid invite code.");
+
+        return await JoinGroupAsync(userId, group);
+    }
+
+    public async Task<string> GetInviteLinkAsync(Guid groupId)
+    {
+        var group = await groupRepo.FindByIdAsync(groupId)
+            ?? throw new KeyNotFoundException("Savings group not found.");
+
+        return BuildInviteLink(group.InviteCode);
+    }
+
+    private async Task<GroupResponse> JoinGroupAsync(Guid userId, SavingsGroup group)
+    {
         if (group.Status != GroupStatus.Open)
             throw new InvalidOperationException("This savings group is no longer accepting new members.");
 
-        var existingMember = await groupRepo.FindMemberAsync(groupId, userId);
+        var existingMember = await groupRepo.FindMemberAsync(group.Id, userId);
         if (existingMember != null)
             throw new InvalidOperationException("You are already a member of this group.");
 
-        var members = await groupRepo.GetMembersAsync(groupId);
+        var members = await groupRepo.GetMembersAsync(group.Id);
         if (members.Count >= group.MaxMembers)
             throw new InvalidOperationException("This savings group is full.");
 
@@ -132,30 +187,95 @@ public class GroupsService(GroupRepository groupRepo, UserRepository userRepo, P
                 ScheduledDate = scheduledDate
             });
 
-            scheduledDate = group.Frequency == ContributionFrequency.Weekly
-                ? scheduledDate.AddDays(7)
-                : scheduledDate.AddMonths(1);
+            scheduledDate = group.Frequency switch
+            {
+                ContributionFrequency.Weekly => scheduledDate.AddDays(7),
+                ContributionFrequency.BiWeekly => scheduledDate.AddDays(14),
+                _ => scheduledDate.AddMonths(1)
+            };
         }
 
         await payoutRepo.AddRangeAsync(payouts);
     }
 
+    private async Task<int> GetNextPayoutPositionAsync(Guid groupId)
+    {
+        var payouts = await payoutRepo.GetByGroupAsync(groupId);
+        var nextPayout = payouts.FirstOrDefault(p => p.Status == PayoutStatus.Scheduled);
+        return nextPayout?.CycleNumber ?? 0;
+    }
+
     private async Task<GroupResponse> MapToResponseAsync(SavingsGroup group)
     {
         var memberCount = (await groupRepo.GetMembersAsync(group.Id)).Count;
-        return new GroupResponse
+        return await MapToResponseBaseAsync(group, memberCount);
+    }
+
+    private Task<GroupResponse> MapToResponseBaseAsync(SavingsGroup group, int memberCount) =>
+        Task.FromResult(new GroupResponse
         {
             Id = group.Id,
             Name = group.Name,
             Description = group.Description,
+            PrimaryPurpose = group.PrimaryPurpose,
             ContributionAmount = group.ContributionAmount,
+            TotalPool = group.ContributionAmount * group.MaxMembers,
             Frequency = group.Frequency.ToString(),
             MaxMembers = group.MaxMembers,
             CurrentMembers = memberCount,
             CreatedByUserId = group.CreatedByUserId,
             Status = group.Status.ToString(),
             StartDate = group.StartDate,
-            CreatedAt = group.CreatedAt
+            CreatedAt = group.CreatedAt,
+            InviteCode = group.InviteCode,
+            InviteLink = BuildInviteLink(group.InviteCode)
+        });
+
+    private string BuildInviteLink(string inviteCode) =>
+        $"{_baseUrl}/join/{inviteCode}";
+
+    private static string GenerateInviteCode(string groupName)
+    {
+        var slug = new string(groupName.ToLower()
+            .Where(c => char.IsLetterOrDigit(c) || c == ' ')
+            .ToArray())
+            .Replace(' ', '-')
+            .Trim('-');
+
+        if (slug.Length > 20) slug = slug[..20].TrimEnd('-');
+
+        var suffix = Guid.NewGuid().ToString("N")[..4];
+        return $"{slug}-{suffix}";
+    }
+
+    private static int GetCurrentCycleNumber(SavingsGroup group)
+    {
+        if (group.Status != GroupStatus.Active || !group.StartDate.HasValue)
+            return 0;
+
+        var daysSinceStart = (DateTime.UtcNow - group.StartDate.Value).Days;
+        var cycleDays = group.Frequency switch
+        {
+            ContributionFrequency.Weekly => 7,
+            ContributionFrequency.BiWeekly => 14,
+            _ => 30
         };
+
+        return Math.Max(1, (daysSinceStart / cycleDays) + 1);
+    }
+
+    private static bool IsOverdue(SavingsGroup group, int cycleNumber)
+    {
+        if (!group.StartDate.HasValue) return false;
+
+        var cycleDays = group.Frequency switch
+        {
+            ContributionFrequency.Weekly => 7,
+            ContributionFrequency.BiWeekly => 14,
+            _ => 30
+        };
+
+        var cycleEnd = group.StartDate.Value.AddDays(cycleDays * cycleNumber);
+        return DateTime.UtcNow > cycleEnd;
     }
 }
