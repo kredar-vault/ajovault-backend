@@ -47,6 +47,18 @@ namespace AjoVault.API.Migrations
                 nullable: false,
                 defaultValue: "");
 
+            // Backfill unique invite codes for existing rows before creating the unique index
+            migrationBuilder.Sql(
+                "UPDATE \"SavingsGroups\" SET \"InviteCode\" = LOWER(REPLACE(\"Name\", ' ', '-')) || '-' || SUBSTR(MD5(RANDOM()::TEXT), 1, 4) WHERE \"InviteCode\" = ''");
+
+            // Backfill account numbers for existing users
+            migrationBuilder.Sql(
+                "UPDATE \"Users\" SET \"AccountNumber\" = LPAD(FLOOR(RANDOM() * 9000000000 + 1000000000)::TEXT, 10, '0') WHERE \"AccountNumber\" = ''");
+
+            // Backfill contribution status
+            migrationBuilder.Sql(
+                "UPDATE \"Contributions\" SET \"Status\" = 'Received' WHERE \"Status\" = ''");
+
             migrationBuilder.CreateIndex(
                 name: "IX_SavingsGroups_InviteCode",
                 table: "SavingsGroups",
