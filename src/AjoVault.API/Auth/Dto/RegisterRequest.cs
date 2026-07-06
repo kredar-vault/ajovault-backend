@@ -5,6 +5,7 @@ namespace AjoVault.API.Auth.Dto;
 public class RegisterRequest
 {
     [Required]
+    [RegularExpression(@"^[a-zA-Z\s'\-]+$", ErrorMessage = "Name can only contain letters, spaces, hyphens, and apostrophes.")]
     public string FullName { get; set; } = string.Empty;
 
     [Required, EmailAddress]

@@ -84,6 +84,48 @@ public class AccountService(
         }).ToList();
     }
 
+    public async Task<AccountResponse> UpdateAsync(Guid userId, UpdateAccountRequest request)
+    {
+        var user = await userRepo.FindByIdAsync(userId)
+            ?? throw new KeyNotFoundException("User not found.");
+
+        if (!string.IsNullOrWhiteSpace(request.FullName)) user.FullName = request.FullName.Trim();
+        if (!string.IsNullOrWhiteSpace(request.PhoneNumber)) user.PhoneNumber = request.PhoneNumber.Trim();
+        await userRepo.UpdateAsync(user);
+
+        return await GetAsync(userId);
+    }
+
+    public async Task ChangePasswordAsync(Guid userId, ChangePasswordRequest request)
+    {
+        if (request.NewPassword != request.ConfirmPassword)
+            throw new InvalidOperationException("New passwords do not match.");
+
+        var user = await userRepo.FindByIdAsync(userId)
+            ?? throw new KeyNotFoundException("User not found.");
+
+        if (!BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.PasswordHash))
+            throw new UnauthorizedAccessException("Current password is incorrect.");
+
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword, workFactor: 10);
+        await userRepo.UpdateAsync(user);
+    }
+
+    public async Task ChangePinAsync(Guid userId, ChangePinRequest request)
+    {
+        var user = await userRepo.FindByIdAsync(userId)
+            ?? throw new KeyNotFoundException("User not found.");
+
+        if (user.PinHash != null && !string.IsNullOrWhiteSpace(request.CurrentPin))
+        {
+            if (!BCrypt.Net.BCrypt.Verify(request.CurrentPin, user.PinHash))
+                throw new UnauthorizedAccessException("Current PIN is incorrect.");
+        }
+
+        user.PinHash = BCrypt.Net.BCrypt.HashPassword(request.NewPin, workFactor: 6);
+        await userRepo.UpdateAsync(user);
+    }
+
     private static string MaskAccountNumber(string accountNumber)
     {
         if (accountNumber.Length <= 4)

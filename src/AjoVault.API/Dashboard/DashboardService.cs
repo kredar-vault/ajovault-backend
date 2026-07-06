@@ -88,6 +88,51 @@ public class DashboardService(
         };
     }
 
+    public async Task<object> GetByGroupAsync(Guid userId, Guid groupId)
+    {
+        var group = await groupRepo.FindByIdAsync(groupId)
+            ?? throw new KeyNotFoundException("Savings group not found.");
+
+        var members = await groupRepo.GetMembersAsync(groupId);
+        var contributions = await contributionRepo.GetByGroupAsync(groupId);
+        var payouts = await payoutRepo.GetByGroupAsync(groupId);
+
+        var currentCycle = GetCurrentCycle(group);
+        var cycleContribs = contributions.Where(c => c.CycleNumber == currentCycle).ToList();
+        var paidCount = cycleContribs.Count;
+        var totalCollected = cycleContribs.Sum(c => c.Amount);
+
+        var myMember = members.FirstOrDefault(m => m.UserId == userId);
+        var myContribThisCycle = cycleContribs.Any(c => c.UserId == userId);
+
+        var nextPayout = payouts.Where(p => p.Status == PayoutStatus.Scheduled).OrderBy(p => p.CycleNumber).FirstOrDefault();
+        User? nextRecipient = nextPayout != null ? await userRepo.FindByIdAsync(nextPayout.RecipientUserId) : null;
+
+        return new
+        {
+            groupId = group.Id,
+            groupName = group.Name,
+            status = group.Status.ToString(),
+            currentCycle,
+            totalMembers = members.Count,
+            paidThisCycle = paidCount,
+            pendingThisCycle = members.Count - paidCount,
+            totalCollectedThisCycle = totalCollected,
+            myContributionStatus = myMember == null ? "not_member"
+                : myContribThisCycle ? "paid" : "pending",
+            nextPayout = nextPayout == null ? null : new
+            {
+                cycleNumber = nextPayout.CycleNumber,
+                recipient = nextRecipient?.FullName ?? "Unknown",
+                amount = nextPayout.Amount,
+                scheduledDate = nextPayout.ScheduledDate
+            },
+            dvaAccountNumber = group.DvaAccountNumber,
+            dvaBankName = group.DvaBankName,
+            dvaAccountName = group.DvaAccountName
+        };
+    }
+
     private static int GetCurrentCycle(SavingsGroup group)
     {
         if (!group.StartDate.HasValue) return 0;

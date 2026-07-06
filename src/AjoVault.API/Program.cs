@@ -9,6 +9,7 @@ using AjoVault.API.Data;
 using AjoVault.API.Groups;
 using AjoVault.API.Kredar;
 using AjoVault.API.Payouts;
+using AjoVault.API.Wallet;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -76,6 +77,7 @@ builder.Services.AddScoped<PayoutRepository>();
 builder.Services.AddScoped<PayoutsService>();
 builder.Services.AddScoped<DashboardService>();
 builder.Services.AddScoped<AccountService>();
+builder.Services.AddScoped<WalletService>();
 
 
 // Exception handler

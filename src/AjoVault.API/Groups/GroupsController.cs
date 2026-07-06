@@ -62,4 +62,53 @@ public class GroupsController(GroupsService groupsService) : ControllerBase
         var link = await groupsService.GetInviteLinkAsync(id);
         return Ok(ApiResponse<object>.Success(new { inviteLink = link }));
     }
+
+    [HttpPost("{id:guid}/invite")]
+    public async Task<IActionResult> SendInvite(Guid id)
+    {
+        var link = await groupsService.GetInviteLinkAsync(id);
+        return Ok(ApiResponse<object>.Success(new { inviteLink = link, inviteCode = link.Split('/').Last() }, "Invite link generated."));
+    }
+
+    [HttpGet("{groupId:guid}/settings")]
+    public async Task<IActionResult> GetSettings(Guid groupId)
+    {
+        var group = await groupsService.GetByIdAsync(groupId);
+        return Ok(ApiResponse<object>.Success(new
+        {
+            group.Id, group.Name, group.Description, group.PrimaryPurpose,
+            group.ContributionAmount, group.Frequency, group.MaxMembers, group.Status
+        }));
+    }
+
+    [HttpPatch("{groupId:guid}/settings")]
+    public async Task<IActionResult> UpdateSettings(Guid groupId, [FromBody] UpdateGroupSettingsRequest request)
+    {
+        var userId = UserContext.GetUserId(HttpContext);
+        var group = await groupsService.UpdateSettingsAsync(userId, groupId, request);
+        return Ok(ApiResponse<GroupResponse>.Success(group, "Group settings updated."));
+    }
+
+    [HttpGet("{groupId:guid}/members")]
+    public async Task<IActionResult> GetMembers(Guid groupId)
+    {
+        var members = await groupsService.GetMembersAsync(groupId);
+        return Ok(ApiResponse<List<GroupMemberDetailResponse>>.Success(members));
+    }
+
+    [HttpDelete("{groupId:guid}/members/{memberId:guid}")]
+    public async Task<IActionResult> RemoveMember(Guid groupId, Guid memberId)
+    {
+        var userId = UserContext.GetUserId(HttpContext);
+        await groupsService.RemoveMemberAsync(userId, groupId, memberId);
+        return Ok(ApiResponse<object>.Success(new { }, "Member removed."));
+    }
+
+    [HttpPatch("{groupId:guid}/members/{memberId:guid}/role")]
+    public async Task<IActionResult> UpdateMemberRole(Guid groupId, Guid memberId, [FromBody] UpdateMemberRoleRequest request)
+    {
+        var userId = UserContext.GetUserId(HttpContext);
+        var member = await groupsService.UpdateMemberRoleAsync(userId, groupId, memberId, request.Role);
+        return Ok(ApiResponse<GroupMemberDetailResponse>.Success(member, "Member role updated."));
+    }
 }

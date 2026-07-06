@@ -18,6 +18,30 @@ public class AccountController(AccountService accountService) : ControllerBase
         return Ok(ApiResponse<AccountResponse>.Success(account));
     }
 
+    [HttpPatch]
+    public async Task<IActionResult> Update([FromBody] UpdateAccountRequest request)
+    {
+        var userId = UserContext.GetUserId(HttpContext);
+        var account = await accountService.UpdateAsync(userId, request);
+        return Ok(ApiResponse<AccountResponse>.Success(account, "Profile updated."));
+    }
+
+    [HttpPatch("password")]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
+    {
+        var userId = UserContext.GetUserId(HttpContext);
+        await accountService.ChangePasswordAsync(userId, request);
+        return Ok(ApiResponse<object>.Success(new { }, "Password changed successfully."));
+    }
+
+    [HttpPatch("pin")]
+    public async Task<IActionResult> ChangePin([FromBody] ChangePinRequest request)
+    {
+        var userId = UserContext.GetUserId(HttpContext);
+        await accountService.ChangePinAsync(userId, request);
+        return Ok(ApiResponse<object>.Success(new { }, "PIN updated successfully."));
+    }
+
     [HttpGet("transactions")]
     public async Task<IActionResult> GetTransactions()
     {
