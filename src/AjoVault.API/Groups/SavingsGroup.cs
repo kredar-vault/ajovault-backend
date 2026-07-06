@@ -28,4 +28,11 @@ public class SavingsGroup
     public DateTime? StartDate { get; set; }
     public string InviteCode { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    // Kredar DVA fields — populated when group becomes Active
+    public Guid? KredarCustomerId { get; set; }
+    public Guid? KredarDvaId { get; set; }
+    public string? DvaAccountNumber { get; set; }
+    public string? DvaBankName { get; set; }
+    public string? DvaAccountName { get; set; }
 }

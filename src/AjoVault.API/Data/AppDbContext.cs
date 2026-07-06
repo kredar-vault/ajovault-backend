@@ -32,6 +32,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(g => g.ContributionAmount).HasPrecision(18, 2);
             e.HasIndex(g => g.InviteCode).IsUnique();
             e.Property(g => g.InviteCode).HasMaxLength(100);
+            e.Property(g => g.DvaAccountNumber).HasMaxLength(20);
+            e.Property(g => g.DvaBankName).HasMaxLength(100);
+            e.Property(g => g.DvaAccountName).HasMaxLength(200);
         });
 
         modelBuilder.Entity<GroupMember>(e =>

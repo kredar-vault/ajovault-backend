@@ -2,6 +2,7 @@ using AjoVault.API.Auth;
 using AjoVault.API.Config;
 using AjoVault.API.Contributions;
 using AjoVault.API.Groups.Dto;
+using AjoVault.API.Kredar;
 using AjoVault.API.Payouts;
 using Microsoft.Extensions.Options;
 
@@ -12,7 +13,9 @@ public class GroupsService(
     UserRepository userRepo,
     PayoutRepository payoutRepo,
     ContributionRepository contributionRepo,
-    IOptions<AppSettings> appSettings)
+    KredarClient kredarClient,
+    IOptions<AppSettings> appSettings,
+    ILogger<GroupsService> logger)
 {
     private readonly string _baseUrl = appSettings.Value.BaseUrl;
 
@@ -48,13 +51,17 @@ public class GroupsService(
     public async Task<List<GroupResponse>> GetAllAsync()
     {
         var groups = await groupRepo.GetAllAsync();
-        return (await Task.WhenAll(groups.Select(MapToResponseAsync))).ToList();
+        var result = new List<GroupResponse>();
+        foreach (var g in groups) result.Add(await MapToResponseAsync(g));
+        return result;
     }
 
     public async Task<List<GroupResponse>> GetMyGroupsAsync(Guid userId)
     {
         var groups = await groupRepo.GetByMemberAsync(userId);
-        return (await Task.WhenAll(groups.Select(MapToResponseAsync))).ToList();
+        var result = new List<GroupResponse>();
+        foreach (var g in groups) result.Add(await MapToResponseAsync(g));
+        return result;
     }
 
     public async Task<GroupDetailResponse> GetByIdAsync(Guid groupId)
@@ -164,6 +171,7 @@ public class GroupsService(
             group.StartDate = DateTime.UtcNow;
             await groupRepo.UpdateAsync(group);
             await GeneratePayoutScheduleAsync(group);
+            await ProvisionKredarDvaAsync(group);
         }
 
         return await MapToResponseAsync(group);
@@ -228,11 +236,53 @@ public class GroupsService(
             StartDate = group.StartDate,
             CreatedAt = group.CreatedAt,
             InviteCode = group.InviteCode,
-            InviteLink = BuildInviteLink(group.InviteCode)
+            InviteLink = BuildInviteLink(group.InviteCode),
+            DvaAccountNumber = group.DvaAccountNumber,
+            DvaBankName = group.DvaBankName,
+            DvaAccountName = group.DvaAccountName,
         });
 
     private string BuildInviteLink(string inviteCode) =>
         $"{_baseUrl}/join/{inviteCode}";
+
+    private async Task ProvisionKredarDvaAsync(SavingsGroup group)
+    {
+        try
+        {
+            var email = $"group-{group.Id:N}@ajovault.app";
+            var nameParts = group.Name.Split(' ', 2);
+            var firstName = nameParts[0];
+            var lastName = nameParts.Length > 1 ? nameParts[1] : "Group";
+
+            var customer = await kredarClient.CreateCustomerAsync(firstName, lastName, email);
+            if (customer == null)
+            {
+                logger.LogWarning("Kredar customer creation returned null for group {GroupId}", group.Id);
+                return;
+            }
+
+            var totalPot = group.ContributionAmount * group.MaxMembers;
+            var dva = await kredarClient.CreateDvaAsync(customer.Id, totalPot);
+            if (dva == null)
+            {
+                logger.LogWarning("Kredar DVA creation returned null for group {GroupId}", group.Id);
+                return;
+            }
+
+            group.KredarCustomerId = customer.Id;
+            group.KredarDvaId = dva.Id;
+            group.DvaAccountNumber = dva.AccountNumber;
+            group.DvaBankName = dva.BankName;
+            group.DvaAccountName = dva.AccountName;
+            await groupRepo.UpdateAsync(group);
+
+            logger.LogInformation("Kredar DVA {AccountNumber} provisioned for group {GroupId}", dva.AccountNumber, group.Id);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to provision Kredar DVA for group {GroupId}", group.Id);
+        }
+    }
 
     private static string GenerateInviteCode(string groupName)
     {

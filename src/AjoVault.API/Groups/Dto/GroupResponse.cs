@@ -17,4 +17,7 @@ public class GroupResponse
     public DateTime CreatedAt { get; set; }
     public string InviteCode { get; set; } = string.Empty;
     public string InviteLink { get; set; } = string.Empty;
+    public string? DvaAccountNumber { get; set; }
+    public string? DvaBankName { get; set; }
+    public string? DvaAccountName { get; set; }
 }

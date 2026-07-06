@@ -7,6 +7,7 @@ using AjoVault.API.Contributions;
 using AjoVault.API.Dashboard;
 using AjoVault.API.Data;
 using AjoVault.API.Groups;
+using AjoVault.API.Kredar;
 using AjoVault.API.Payouts;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +25,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // Settings
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
 builder.Services.Configure<AppSettings>(builder.Configuration.GetSection("AppSettings"));
+builder.Services.Configure<KredarSettings>(builder.Configuration.GetSection("KredarSettings"));
 
 // JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>()!;
@@ -57,6 +59,10 @@ builder.Services.AddCors(options =>
             .AllowAnyMethod();
     });
 });
+
+// HTTP client for Kredar
+builder.Services.AddHttpClient("kredar", c => { c.Timeout = TimeSpan.FromSeconds(30); });
+builder.Services.AddScoped<KredarClient>();
 
 // Services
 builder.Services.AddScoped<UserRepository>();
