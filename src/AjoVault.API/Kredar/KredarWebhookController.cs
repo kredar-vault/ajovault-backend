@@ -120,8 +120,9 @@ public class KredarWebhookController(
     private bool VerifySignature(byte[] body, string header)
     {
         var secret = settings.Value.WebhookSecret;
-        if (string.IsNullOrWhiteSpace(secret) || string.IsNullOrWhiteSpace(header))
-            return false;
+        // Dev mode: skip verification when no secret is configured
+        if (string.IsNullOrWhiteSpace(secret)) return true;
+        if (string.IsNullOrWhiteSpace(header)) return false;
 
         var computed = Convert.ToHexString(
             new HMACSHA256(Encoding.UTF8.GetBytes(secret)).ComputeHash(body)).ToLowerInvariant();
