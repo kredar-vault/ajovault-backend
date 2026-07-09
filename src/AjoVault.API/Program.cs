@@ -7,7 +7,9 @@ using AjoVault.API.Contributions;
 using AjoVault.API.Dashboard;
 using AjoVault.API.Data;
 using AjoVault.API.Groups;
+using AjoVault.API.Kredar;
 using AjoVault.API.Payouts;
+using AjoVault.API.Wallet;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -24,6 +26,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // Settings
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
 builder.Services.Configure<AppSettings>(builder.Configuration.GetSection("AppSettings"));
+builder.Services.Configure<KredarSettings>(builder.Configuration.GetSection("KredarSettings"));
 
 // JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>()!;
@@ -44,19 +47,23 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
-// CORS — allow frontend on localhost:3000
+// CORS — allowed frontend origins come from config (Cors:AllowedOrigins, comma-separated),
+// falling back to localhost for local dev.
+var corsOrigins = (builder.Configuration["Cors:AllowedOrigins"] ?? "http://localhost:3000,https://localhost:3000")
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins(
-                "http://localhost:3000",
-                "https://localhost:3000"
-            )
+        policy.WithOrigins(corsOrigins)
             .AllowAnyHeader()
             .AllowAnyMethod();
     });
 });
+
+// HTTP client for Kredar
+builder.Services.AddHttpClient("kredar", c => { c.Timeout = TimeSpan.FromSeconds(30); });
+builder.Services.AddScoped<KredarClient>();
 
 // Services
 builder.Services.AddScoped<UserRepository>();
@@ -70,6 +77,7 @@ builder.Services.AddScoped<PayoutRepository>();
 builder.Services.AddScoped<PayoutsService>();
 builder.Services.AddScoped<DashboardService>();
 builder.Services.AddScoped<AccountService>();
+builder.Services.AddScoped<WalletService>();
 
 
 // Exception handler
@@ -121,5 +129,6 @@ app.UseSwaggerUI();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHealthChecks("/health");
 
 app.Run();

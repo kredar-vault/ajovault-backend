@@ -51,6 +51,31 @@ public class PayoutsService(PayoutRepository payoutRepo, GroupRepository groupRe
         return MapToResponse(payout, group.Name, recipient?.FullName ?? "Unknown");
     }
 
+    public async Task<PayoutResponse?> GetCurrentPayoutAsync(Guid groupId)
+    {
+        var payouts = await payoutRepo.GetByGroupAsync(groupId);
+        var current = payouts.FirstOrDefault(p => p.Status == PayoutStatus.Scheduled);
+        if (current == null) return null;
+
+        var group = await groupRepo.FindByIdAsync(groupId);
+        var recipient = await userRepo.FindByIdAsync(current.RecipientUserId);
+        return MapToResponse(current, group?.Name ?? "", recipient?.FullName ?? "Unknown");
+    }
+
+    public async Task<List<PayoutResponse>> GetUpcomingByGroupAsync(Guid groupId)
+    {
+        var payouts = await payoutRepo.GetByGroupAsync(groupId);
+        var group = await groupRepo.FindByIdAsync(groupId);
+        var userIds = payouts.Select(p => p.RecipientUserId).Distinct();
+        var users = await userRepo.FindByIdsAsync(userIds);
+        var userLookup = users.ToDictionary(u => u.Id, u => u.FullName);
+
+        return payouts
+            .Where(p => p.Status == PayoutStatus.Scheduled)
+            .Select(p => MapToResponse(p, group?.Name ?? "", userLookup.GetValueOrDefault(p.RecipientUserId, "Unknown")))
+            .ToList();
+    }
+
     private static PayoutResponse MapToResponse(Payout p, string groupName, string recipientName) => new()
     {
         Id = p.Id,
