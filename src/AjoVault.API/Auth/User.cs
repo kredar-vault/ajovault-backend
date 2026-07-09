@@ -12,5 +12,8 @@ public class User
     public string? BankAccountNumber { get; set; }
     public string? BankAccountName { get; set; }
     public string? BankCode { get; set; }
+    public bool IsVerified { get; set; } = false;
+    public string? OtpCode { get; set; }
+    public DateTime? OtpExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

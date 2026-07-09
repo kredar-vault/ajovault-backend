@@ -12,7 +12,21 @@ public class AuthController(AuthService authService) : ControllerBase
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
         var result = await authService.RegisterAsync(request);
-        return Ok(ApiResponse<AuthResponse>.Success(result, "Registration successful."));
+        return Ok(ApiResponse<RegisterResponse>.Success(result, result.Message));
+    }
+
+    [HttpPost("verify-otp")]
+    public async Task<IActionResult> VerifyOtp([FromBody] VerifyOtpRequest request)
+    {
+        var result = await authService.VerifyOtpAsync(request);
+        return Ok(ApiResponse<AuthResponse>.Success(result, "Email verified. Welcome to AjoVault!"));
+    }
+
+    [HttpPost("resend-otp")]
+    public async Task<IActionResult> ResendOtp([FromBody] ResendOtpRequest request)
+    {
+        await authService.ResendOtpAsync(request.Email);
+        return Ok(ApiResponse<object>.Success(new { }, "A new OTP has been sent to your email."));
     }
 
     [HttpPost("login")]

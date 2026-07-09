@@ -36,7 +36,9 @@ public class GroupsService(
             Frequency = frequency,
             MaxMembers = request.MaxMembers,
             CreatedByUserId = userId,
-            InviteCode = GenerateInviteCode(request.Name)
+            InviteCode = GenerateInviteCode(request.Name),
+            ContactEmail = request.ContactEmail,
+            ContactPhone = request.ContactPhone,
         };
 
         await groupRepo.AddAsync(group);
@@ -349,12 +351,13 @@ public class GroupsService(
     {
         try
         {
-            var email = $"group-{group.Id:N}@ajovault.app";
+            var email = group.ContactEmail ?? $"group-{group.Id:N}@ajovault.app";
+            var phone = group.ContactPhone;
             var nameParts = group.Name.Split(' ', 2);
             var firstName = nameParts[0];
             var lastName = nameParts.Length > 1 ? nameParts[1] : "Group";
 
-            var customer = await kredarClient.CreateCustomerAsync(firstName, lastName, email);
+            var customer = await kredarClient.CreateCustomerAsync(firstName, lastName, email, phone);
             if (customer == null)
             {
                 logger.LogWarning("Kredar customer creation returned null for group {GroupId}", group.Id);
