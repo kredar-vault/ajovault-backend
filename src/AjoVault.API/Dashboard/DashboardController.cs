@@ -17,4 +17,12 @@ public class DashboardController(DashboardService dashboardService) : Controller
         var result = await dashboardService.GetAsync(userId);
         return Ok(ApiResponse<DashboardResponse>.Success(result));
     }
+
+    [HttpGet("{groupId:guid}")]
+    public async Task<IActionResult> GetByGroup(Guid groupId)
+    {
+        var userId = UserContext.GetUserId(HttpContext);
+        var result = await dashboardService.GetByGroupAsync(userId, groupId);
+        return Ok(ApiResponse<object>.Success(result));
+    }
 }

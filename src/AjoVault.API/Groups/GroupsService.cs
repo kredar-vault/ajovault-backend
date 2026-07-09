@@ -1,8 +1,11 @@
 using AjoVault.API.Auth;
 using AjoVault.API.Config;
 using AjoVault.API.Contributions;
+using AjoVault.API.Data;
 using AjoVault.API.Groups.Dto;
+using AjoVault.API.Kredar;
 using AjoVault.API.Payouts;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace AjoVault.API.Groups;
@@ -12,7 +15,10 @@ public class GroupsService(
     UserRepository userRepo,
     PayoutRepository payoutRepo,
     ContributionRepository contributionRepo,
-    IOptions<AppSettings> appSettings)
+    KredarClient kredarClient,
+    AppDbContext db,
+    IOptions<AppSettings> appSettings,
+    ILogger<GroupsService> logger)
 {
     private readonly string _baseUrl = appSettings.Value.BaseUrl;
 
@@ -39,7 +45,8 @@ public class GroupsService(
         {
             GroupId = group.Id,
             UserId = userId,
-            PayoutPosition = 1
+            PayoutPosition = 1,
+            Role = GroupMemberRole.Admin
         });
 
         return await MapToResponseAsync(group);
@@ -48,13 +55,17 @@ public class GroupsService(
     public async Task<List<GroupResponse>> GetAllAsync()
     {
         var groups = await groupRepo.GetAllAsync();
-        return (await Task.WhenAll(groups.Select(MapToResponseAsync))).ToList();
+        var result = new List<GroupResponse>();
+        foreach (var g in groups) result.Add(await MapToResponseAsync(g));
+        return result;
     }
 
     public async Task<List<GroupResponse>> GetMyGroupsAsync(Guid userId)
     {
         var groups = await groupRepo.GetByMemberAsync(userId);
-        return (await Task.WhenAll(groups.Select(MapToResponseAsync))).ToList();
+        var result = new List<GroupResponse>();
+        foreach (var g in groups) result.Add(await MapToResponseAsync(g));
+        return result;
     }
 
     public async Task<GroupDetailResponse> GetByIdAsync(Guid groupId)
@@ -164,6 +175,7 @@ public class GroupsService(
             group.StartDate = DateTime.UtcNow;
             await groupRepo.UpdateAsync(group);
             await GeneratePayoutScheduleAsync(group);
+            await ProvisionKredarDvaAsync(group);
         }
 
         return await MapToResponseAsync(group);
@@ -228,11 +240,149 @@ public class GroupsService(
             StartDate = group.StartDate,
             CreatedAt = group.CreatedAt,
             InviteCode = group.InviteCode,
-            InviteLink = BuildInviteLink(group.InviteCode)
+            InviteLink = BuildInviteLink(group.InviteCode),
+            DvaAccountNumber = group.DvaAccountNumber,
+            DvaBankName = group.DvaBankName,
+            DvaAccountName = group.DvaAccountName,
         });
 
     private string BuildInviteLink(string inviteCode) =>
         $"{_baseUrl}/join/{inviteCode}";
+
+    public async Task<GroupResponse> UpdateSettingsAsync(Guid userId, Guid groupId, UpdateGroupSettingsRequest request)
+    {
+        var group = await groupRepo.FindByIdAsync(groupId)
+            ?? throw new KeyNotFoundException("Savings group not found.");
+
+        var member = await groupRepo.FindMemberAsync(groupId, userId)
+            ?? throw new UnauthorizedAccessException("You are not a member of this group.");
+        if (member.Role != GroupMemberRole.Admin)
+            throw new UnauthorizedAccessException("Only admins can update group settings.");
+
+        if (!string.IsNullOrWhiteSpace(request.Name)) group.Name = request.Name.Trim();
+        if (request.Description != null) group.Description = request.Description;
+        if (request.PrimaryPurpose != null) group.PrimaryPurpose = request.PrimaryPurpose;
+        await groupRepo.UpdateAsync(group);
+
+        return await MapToResponseAsync(group);
+    }
+
+    public async Task<List<GroupMemberDetailResponse>> GetMembersAsync(Guid groupId)
+    {
+        var members = await groupRepo.GetMembersAsync(groupId);
+        var users = await userRepo.FindByIdsAsync(members.Select(m => m.UserId));
+        var userLookup = users.ToDictionary(u => u.Id);
+
+        return members.Select(m => new GroupMemberDetailResponse
+        {
+            MemberId = m.Id,
+            UserId = m.UserId,
+            FullName = userLookup.TryGetValue(m.UserId, out var u) ? u.FullName : "Unknown",
+            Email = userLookup.TryGetValue(m.UserId, out u) ? u.Email : "",
+            PayoutPosition = m.PayoutPosition,
+            Role = m.Role.ToString(),
+            JoinedAt = m.JoinedAt
+        }).ToList();
+    }
+
+    public async Task RemoveMemberAsync(Guid userId, Guid groupId, Guid memberId)
+    {
+        var group = await groupRepo.FindByIdAsync(groupId)
+            ?? throw new KeyNotFoundException("Savings group not found.");
+
+        var actor = await groupRepo.FindMemberAsync(groupId, userId)
+            ?? throw new UnauthorizedAccessException("You are not a member of this group.");
+        if (actor.Role != GroupMemberRole.Admin)
+            throw new UnauthorizedAccessException("Only admins can remove members.");
+
+        if (group.Status != GroupStatus.Open)
+            throw new InvalidOperationException("Members can only be removed from open groups.");
+
+        var target = await db.GroupMembers.FindAsync(memberId)
+            ?? throw new KeyNotFoundException("Member not found.");
+
+        if (target.GroupId != groupId)
+            throw new KeyNotFoundException("Member not found in this group.");
+
+        if (target.UserId == group.CreatedByUserId)
+            throw new InvalidOperationException("Cannot remove the group creator.");
+
+        await groupRepo.DeleteMemberAsync(target);
+    }
+
+    public async Task<GroupMemberDetailResponse> UpdateMemberRoleAsync(Guid userId, Guid groupId, Guid memberId, string role)
+    {
+        if (!Enum.TryParse<GroupMemberRole>(role, true, out var newRole))
+            throw new InvalidOperationException("Role must be 'Admin' or 'Member'.");
+
+        var group = await groupRepo.FindByIdAsync(groupId)
+            ?? throw new KeyNotFoundException("Savings group not found.");
+
+        var actor = await groupRepo.FindMemberAsync(groupId, userId)
+            ?? throw new UnauthorizedAccessException("You are not a member of this group.");
+        if (actor.Role != GroupMemberRole.Admin)
+            throw new UnauthorizedAccessException("Only admins can change member roles.");
+
+        var target = await db.GroupMembers.FindAsync(memberId)
+            ?? throw new KeyNotFoundException("Member not found.");
+
+        if (target.GroupId != groupId)
+            throw new KeyNotFoundException("Member not found in this group.");
+
+        target.Role = newRole;
+        await groupRepo.UpdateMemberAsync(target);
+
+        var targetUser = await userRepo.FindByIdAsync(target.UserId);
+        return new GroupMemberDetailResponse
+        {
+            MemberId = target.Id,
+            UserId = target.UserId,
+            FullName = targetUser?.FullName ?? "Unknown",
+            Email = targetUser?.Email ?? "",
+            PayoutPosition = target.PayoutPosition,
+            Role = target.Role.ToString(),
+            JoinedAt = target.JoinedAt
+        };
+    }
+
+    private async Task ProvisionKredarDvaAsync(SavingsGroup group)
+    {
+        try
+        {
+            var email = $"group-{group.Id:N}@ajovault.app";
+            var nameParts = group.Name.Split(' ', 2);
+            var firstName = nameParts[0];
+            var lastName = nameParts.Length > 1 ? nameParts[1] : "Group";
+
+            var customer = await kredarClient.CreateCustomerAsync(firstName, lastName, email);
+            if (customer == null)
+            {
+                logger.LogWarning("Kredar customer creation returned null for group {GroupId}", group.Id);
+                return;
+            }
+
+            var totalPot = group.ContributionAmount * group.MaxMembers;
+            var dva = await kredarClient.CreateDvaAsync(customer.Id, totalPot);
+            if (dva == null)
+            {
+                logger.LogWarning("Kredar DVA creation returned null for group {GroupId}", group.Id);
+                return;
+            }
+
+            group.KredarCustomerId = customer.Id;
+            group.KredarDvaId = dva.Id;
+            group.DvaAccountNumber = dva.AccountNumber;
+            group.DvaBankName = dva.BankName;
+            group.DvaAccountName = dva.AccountName;
+            await groupRepo.UpdateAsync(group);
+
+            logger.LogInformation("Kredar DVA {AccountNumber} provisioned for group {GroupId}", dva.AccountNumber, group.Id);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to provision Kredar DVA for group {GroupId}", group.Id);
+        }
+    }
 
     private static string GenerateInviteCode(string groupName)
     {

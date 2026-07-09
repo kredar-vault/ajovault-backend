@@ -1,6 +1,7 @@
 using AjoVault.API.Auth;
 using AjoVault.API.Contributions;
 using AjoVault.API.Groups;
+using AjoVault.API.Notifications;
 using AjoVault.API.Payouts;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,6 +14,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<GroupMember> GroupMembers => Set<GroupMember>();
     public DbSet<Contribution> Contributions => Set<Contribution>();
     public DbSet<Payout> Payouts => Set<Payout>();
+    public DbSet<Notification> Notifications => Set<Notification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -32,12 +34,24 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(g => g.ContributionAmount).HasPrecision(18, 2);
             e.HasIndex(g => g.InviteCode).IsUnique();
             e.Property(g => g.InviteCode).HasMaxLength(100);
+            e.Property(g => g.DvaAccountNumber).HasMaxLength(20);
+            e.Property(g => g.DvaBankName).HasMaxLength(100);
+            e.Property(g => g.DvaAccountName).HasMaxLength(200);
         });
 
         modelBuilder.Entity<GroupMember>(e =>
         {
             e.HasKey(m => m.Id);
             e.HasIndex(m => new { m.GroupId, m.UserId }).IsUnique();
+            e.Property(m => m.Role).HasConversion<string>();
+        });
+
+        modelBuilder.Entity<Notification>(e =>
+        {
+            e.HasKey(n => n.Id);
+            e.HasIndex(n => n.UserId);
+            e.Property(n => n.Title).HasMaxLength(200);
+            e.Property(n => n.Type).HasMaxLength(50);
         });
 
         modelBuilder.Entity<Contribution>(e =>

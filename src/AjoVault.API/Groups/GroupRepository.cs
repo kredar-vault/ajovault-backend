@@ -53,4 +53,19 @@ public class GroupRepository(AppDbContext db)
 
     public async Task<SavingsGroup?> FindByInviteCodeAsync(string inviteCode) =>
         await db.SavingsGroups.FirstOrDefaultAsync(g => g.InviteCode == inviteCode);
+
+    public async Task<SavingsGroup?> FindByDvaAccountNumberAsync(string accountNumber) =>
+        await db.SavingsGroups.FirstOrDefaultAsync(g => g.DvaAccountNumber == accountNumber);
+
+    public async Task DeleteMemberAsync(GroupMember member)
+    {
+        db.GroupMembers.Remove(member);
+        await db.SaveChangesAsync();
+    }
+
+    public async Task UpdateMemberAsync(GroupMember member)
+    {
+        db.GroupMembers.Update(member);
+        await db.SaveChangesAsync();
+    }
 }

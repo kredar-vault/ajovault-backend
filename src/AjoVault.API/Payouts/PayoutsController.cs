@@ -24,6 +24,20 @@ public class PayoutsController(PayoutsService payoutsService) : ControllerBase
         return Ok(ApiResponse<List<PayoutResponse>>.Success(payouts));
     }
 
+    [HttpGet("api/v1/groups/{groupId:guid}/payouts/current")]
+    public async Task<IActionResult> GetCurrentPayout(Guid groupId)
+    {
+        var payout = await payoutsService.GetCurrentPayoutAsync(groupId);
+        return Ok(ApiResponse<PayoutResponse?>.Success(payout));
+    }
+
+    [HttpGet("api/v1/groups/{groupId:guid}/payouts/upcoming")]
+    public async Task<IActionResult> GetUpcomingByGroup(Guid groupId)
+    {
+        var payouts = await payoutsService.GetUpcomingByGroupAsync(groupId);
+        return Ok(ApiResponse<List<PayoutResponse>>.Success(payouts));
+    }
+
     [HttpPost("api/v1/groups/{groupId:guid}/payouts/{payoutId:guid}/disburse")]
     public async Task<IActionResult> Disburse(Guid groupId, Guid payoutId)
     {

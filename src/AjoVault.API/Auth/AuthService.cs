@@ -52,12 +52,21 @@ public class AuthService(UserRepository userRepo, JwtService jwtService)
 
     public async Task ForgotPasswordAsync(string email)
     {
-        // If email doesn't exist, we still return success to prevent email enumeration
         var user = await userRepo.FindByEmailAsync(email);
         if (user == null) return;
+        // In production, send reset email with token via Resend here
+    }
 
-        // In production, send reset email via Resend here
-        // For hackathon: no-op but endpoint is wired
+    public async Task ResetPasswordAsync(ResetPasswordRequest request)
+    {
+        if (request.NewPassword != request.ConfirmPassword)
+            throw new InvalidOperationException("Passwords do not match.");
+
+        var user = await userRepo.FindByEmailAsync(request.Email)
+            ?? throw new KeyNotFoundException("No account found with that email.");
+
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword, workFactor: 10);
+        await userRepo.UpdateAsync(user);
     }
 
     private static string GenerateAccountNumber()
