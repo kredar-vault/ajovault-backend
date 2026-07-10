@@ -4,7 +4,7 @@ using Resend;
 
 namespace AjoVault.API.Auth;
 
-public class EmailService(IResend resend, IOptions<EmailSettings> emailOptions)
+public class EmailService(IResend resend, IOptions<EmailSettings> emailOptions, ILogger<EmailService> logger)
 {
     private readonly EmailSettings _email = emailOptions.Value;
 
@@ -60,6 +60,12 @@ public class EmailService(IResend resend, IOptions<EmailSettings> emailOptions)
                 </html>
             """
         };
+
+        if (string.IsNullOrEmpty(_email.ApiKey))
+        {
+            logger.LogWarning("[DEV] EmailSettings:ApiKey not set — OTP for {Email}: {Otp}", toEmail, otp);
+            return;
+        }
 
         await resend.EmailSendAsync(message);
     }
