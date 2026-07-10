@@ -19,4 +19,10 @@ public class CreateGroupRequest
 
     [Range(2, 100)]
     public int MaxMembers { get; set; }
+
+    [Required, EmailAddress]
+    public string ContactEmail { get; set; } = string.Empty;
+
+    [Required]
+    public string ContactPhone { get; set; } = string.Empty;
 }

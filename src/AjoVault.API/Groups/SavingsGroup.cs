@@ -27,6 +27,8 @@ public class SavingsGroup
     public GroupStatus Status { get; set; } = GroupStatus.Open;
     public DateTime? StartDate { get; set; }
     public string InviteCode { get; set; } = string.Empty;
+    public string? ContactEmail { get; set; }
+    public string? ContactPhone { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     // Kredar DVA fields — populated when group becomes Active

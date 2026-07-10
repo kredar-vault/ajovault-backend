@@ -3,6 +3,7 @@ using AjoVault.API.Account;
 using AjoVault.API.Auth;
 using AjoVault.API.Common;
 using AjoVault.API.Config;
+using Resend;
 using AjoVault.API.Contributions;
 using AjoVault.API.Dashboard;
 using AjoVault.API.Data;
@@ -27,6 +28,12 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
 builder.Services.Configure<AppSettings>(builder.Configuration.GetSection("AppSettings"));
 builder.Services.Configure<KredarSettings>(builder.Configuration.GetSection("KredarSettings"));
+builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
+
+// Resend email
+var resendApiKey = builder.Configuration["EmailSettings:ApiKey"] ?? "";
+builder.Services.AddResend(options => options.ApiToken = resendApiKey);
+builder.Services.AddScoped<EmailService>();
 
 // JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>()!;
