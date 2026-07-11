@@ -8,13 +8,16 @@ public class EmailService(IResend resend, IOptions<EmailSettings> emailOptions, 
 {
     private readonly EmailSettings _email = emailOptions.Value;
 
-    public async Task SendOtpEmailAsync(string toEmail, string fullName, string otp)
+    public Task SendLoginOtpEmailAsync(string toEmail, string fullName, string otp) =>
+        SendOtpEmailAsync(toEmail, fullName, otp, subject: "Your AjoVault login code");
+
+    public async Task SendOtpEmailAsync(string toEmail, string fullName, string otp, string subject = "Your AjoVault verification code")
     {
         var message = new EmailMessage
         {
             From = $"{_email.FromName} <{_email.FromEmail}>",
             To = [toEmail],
-            Subject = "Your AjoVault verification code",
+            Subject = subject,
             HtmlBody = $"""
                 <!DOCTYPE html>
                 <html>

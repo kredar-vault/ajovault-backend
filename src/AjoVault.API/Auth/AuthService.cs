@@ -84,7 +84,7 @@ public class AuthService(UserRepository userRepo, JwtService jwtService, EmailSe
         await SendOtpAsync(user);
     }
 
-    public async Task<AuthResponse> LoginAsync(LoginRequest request)
+    public async Task<LoginResponse> LoginAsync(LoginRequest request)
     {
         var user = await userRepo.FindByEmailAsync(request.Email)
             ?? throw new UnauthorizedAccessException("Invalid email or password.");
@@ -95,6 +95,36 @@ public class AuthService(UserRepository userRepo, JwtService jwtService, EmailSe
         if (!user.IsVerified)
             throw new InvalidOperationException("Please verify your email before logging in.");
 
+        await SendLoginOtpAsync(user);
+
+        return new LoginResponse
+        {
+            Email = user.Email,
+            Message = "A verification code has been sent to your email."
+        };
+    }
+
+    public async Task<AuthResponse> VerifyLoginOtpAsync(VerifyLoginOtpRequest request)
+    {
+        var user = await userRepo.FindByEmailAsync(request.Email)
+            ?? throw new UnauthorizedAccessException("Invalid email or password.");
+
+        if (!user.IsVerified)
+            throw new InvalidOperationException("Please verify your email before logging in.");
+
+        if (user.OtpCode == null || user.OtpExpiresAt == null)
+            throw new InvalidOperationException("No OTP found. Please log in again.");
+
+        if (DateTime.UtcNow > user.OtpExpiresAt)
+            throw new InvalidOperationException("OTP has expired. Please log in again.");
+
+        if (user.OtpCode != request.Otp.Trim())
+            throw new InvalidOperationException("Invalid OTP. Please try again.");
+
+        user.OtpCode = null;
+        user.OtpExpiresAt = null;
+        await userRepo.UpdateAsync(user);
+
         return new AuthResponse
         {
             Token = jwtService.GenerateToken(user.Id, user.Email),
@@ -102,6 +132,17 @@ public class AuthService(UserRepository userRepo, JwtService jwtService, EmailSe
             FullName = user.FullName,
             Email = user.Email
         };
+    }
+
+    public async Task ResendLoginOtpAsync(string email)
+    {
+        var user = await userRepo.FindByEmailAsync(email)
+            ?? throw new UnauthorizedAccessException("Invalid email or password.");
+
+        if (!user.IsVerified)
+            throw new InvalidOperationException("Please verify your email before logging in.");
+
+        await SendLoginOtpAsync(user);
     }
 
     public async Task ForgotPasswordAsync(string email)
@@ -121,6 +162,15 @@ public class AuthService(UserRepository userRepo, JwtService jwtService, EmailSe
 
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword, workFactor: 10);
         await userRepo.UpdateAsync(user);
+    }
+
+    private async Task SendLoginOtpAsync(User user)
+    {
+        var otp = GenerateOtp();
+        user.OtpCode = otp;
+        user.OtpExpiresAt = DateTime.UtcNow.AddMinutes(10);
+        await userRepo.UpdateAsync(user);
+        await emailService.SendLoginOtpEmailAsync(user.Email, user.FullName, otp);
     }
 
     private async Task SendOtpAsync(User user)
