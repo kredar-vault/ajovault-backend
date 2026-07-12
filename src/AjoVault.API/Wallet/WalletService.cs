@@ -14,6 +14,7 @@ public class WalletService(
     PayoutRepository payoutRepo,
     WithdrawalRepository withdrawalRepo,
     DepositRepository depositRepo,
+    KredarClient kredarClient,
     ILogger<WalletService> logger,
     IServiceScopeFactory scopeFactory)
 {
@@ -115,6 +116,9 @@ public class WalletService(
         if (amount <= 0)
             throw new InvalidOperationException("Amount must be greater than zero.");
 
+        if (string.IsNullOrWhiteSpace(user.BankAccountNumber) || string.IsNullOrWhiteSpace(user.BankCode))
+            throw new InvalidOperationException("Please add your bank account details in your profile before withdrawing.");
+
         var myGroups = await groupRepo.GetByMemberAsync(userId);
         var groupIds = myGroups.Select(g => g.Id).ToList();
         var allContributions = await contributionRepo.GetAllByUserGroupsAsync(groupIds);
@@ -128,29 +132,72 @@ public class WalletService(
         if (amount > balance)
             throw new InvalidOperationException($"Insufficient balance. Available: ₦{balance:N2}");
 
-        var withdrawal = new Withdrawal { UserId = userId, Amount = amount };
+        var withdrawal = new Withdrawal { UserId = userId, Amount = amount, Status = "Pending" };
         await withdrawalRepo.AddAsync(withdrawal);
+
+        var txRef = $"ajovault-wd-{withdrawal.Id:N}";
+        try
+        {
+            var result = await kredarClient.InitiateTransferAsync(
+                txRef, amount, user.BankAccountNumber, user.BankCode,
+                $"AjoVault wallet withdrawal");
+
+            withdrawal.Status = result.Status == "Succeeded" ? "Completed" : "Failed";
+            withdrawal.KredarReference = result.ProviderReference ?? txRef;
+            withdrawal.FailureReason = result.FailureReason;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Kredar transfer failed for withdrawal {WithdrawalId}", withdrawal.Id);
+            withdrawal.Status = "Failed";
+            withdrawal.FailureReason = ex.Message;
+        }
+
+        await withdrawalRepo.UpdateAsync(withdrawal);
+
+        if (withdrawal.Status == "Failed")
+            throw new InvalidOperationException($"Transfer failed: {withdrawal.FailureReason ?? "Unknown error"}. Please try again.");
 
         return new WithdrawalResponse
         {
             Id = withdrawal.Id,
             Amount = withdrawal.Amount,
-            AccountNumber = user.DvaAccountNumber ?? user.BankAccountNumber ?? "—",
-            AccountName = user.DvaAccountName ?? user.BankAccountName ?? user.FullName,
-            BankName = user.DvaBankName ?? user.BankCode ?? "—",
+            AccountNumber = user.BankAccountNumber,
+            AccountName = user.BankAccountName ?? user.FullName,
+            BankName = user.BankCode,
             Status = withdrawal.Status,
             CreatedAt = withdrawal.CreatedAt
         };
     }
 
-    public async Task<VirtualAccountResponse> SetBankAccountAsync(Guid userId, CreateVirtualAccountRequest request)
+    public async Task<BankLookupResponse> LookupBankAsync(string accountNumber, string bankCode, CancellationToken ct = default)
+    {
+        var result = await kredarClient.LookupBankAccountAsync(accountNumber.Trim(), bankCode.Trim(), ct)
+            ?? throw new InvalidOperationException("Could not verify account. Check the account number and bank code, then try again.");
+
+        return new BankLookupResponse
+        {
+            AccountName = result.AccountName,
+            AccountNumber = result.AccountNumber,
+            BankCode = result.BankCode,
+        };
+    }
+
+    public async Task<VirtualAccountResponse> SetBankAccountAsync(Guid userId, CreateVirtualAccountRequest request, CancellationToken ct = default)
     {
         var user = await userRepo.FindByIdAsync(userId)
             ?? throw new KeyNotFoundException("User not found.");
 
-        user.BankAccountNumber = request.AccountNumber.Trim();
-        user.BankAccountName = request.AccountName.Trim();
-        user.BankCode = request.BankCode.Trim();
+        var accountNumber = request.AccountNumber.Trim();
+        var bankCode = request.BankCode.Trim();
+
+        // Verify the account exists and get the official name from the bank
+        var lookup = await kredarClient.LookupBankAccountAsync(accountNumber, bankCode, ct);
+        var verifiedName = lookup?.AccountName ?? request.AccountName.Trim();
+
+        user.BankAccountNumber = accountNumber;
+        user.BankAccountName = verifiedName;
+        user.BankCode = bankCode;
         await userRepo.UpdateAsync(user);
 
         return new VirtualAccountResponse

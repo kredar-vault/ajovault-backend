@@ -80,6 +80,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasIndex(w => w.UserId);
             e.Property(w => w.Amount).HasPrecision(18, 2);
             e.Property(w => w.Status).HasMaxLength(20);
+            e.Property(w => w.KredarReference).HasMaxLength(100);
+            e.Property(w => w.FailureReason).HasMaxLength(500);
         });
 
         modelBuilder.Entity<Deposit>(e =>

@@ -40,11 +40,18 @@ public class WalletController(WalletService walletService) : ControllerBase
         return Ok(ApiResponse<VirtualAccountResponse>.Success(result));
     }
 
+    [HttpPost("api/v1/wallet/bank/lookup")]
+    public async Task<IActionResult> LookupBank([FromBody] BankLookupRequest request, CancellationToken ct)
+    {
+        var result = await walletService.LookupBankAsync(request.AccountNumber, request.BankCode, ct);
+        return Ok(ApiResponse<BankLookupResponse>.Success(result));
+    }
+
     [HttpPost("api/v1/wallets/create-virtual-account")]
-    public async Task<IActionResult> CreateVirtualAccount([FromBody] CreateVirtualAccountRequest request)
+    public async Task<IActionResult> CreateVirtualAccount([FromBody] CreateVirtualAccountRequest request, CancellationToken ct)
     {
         var userId = UserContext.GetUserId(HttpContext);
-        var result = await walletService.SetBankAccountAsync(userId, request);
+        var result = await walletService.SetBankAccountAsync(userId, request, ct);
         return Ok(ApiResponse<VirtualAccountResponse>.Success(result, "Bank account saved."));
     }
 
