@@ -18,8 +18,15 @@ public class WithdrawalRepository(AppDbContext db)
             .OrderByDescending(w => w.CreatedAt)
             .ToListAsync();
 
+    public async Task<Withdrawal> UpdateAsync(Withdrawal withdrawal)
+    {
+        db.Withdrawals.Update(withdrawal);
+        await db.SaveChangesAsync();
+        return withdrawal;
+    }
+
     public async Task<decimal> GetTotalWithdrawnAsync(Guid userId)
         => await db.Withdrawals
-            .Where(w => w.UserId == userId)
+            .Where(w => w.UserId == userId && w.Status == "Completed")
             .SumAsync(w => (decimal?)w.Amount) ?? 0;
 }

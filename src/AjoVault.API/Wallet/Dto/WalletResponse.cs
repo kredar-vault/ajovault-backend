@@ -33,6 +33,19 @@ public class WithdrawRequest
     public decimal Amount { get; set; }
 }
 
+public class BankLookupRequest
+{
+    public string AccountNumber { get; set; } = string.Empty;
+    public string BankCode { get; set; } = string.Empty;
+}
+
+public class BankLookupResponse
+{
+    public string AccountName { get; set; } = string.Empty;
+    public string AccountNumber { get; set; } = string.Empty;
+    public string BankCode { get; set; } = string.Empty;
+}
+
 public class WithdrawalResponse
 {
     public Guid Id { get; set; }
