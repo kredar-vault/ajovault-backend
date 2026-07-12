@@ -18,7 +18,8 @@ public class TransactionsController(
     GroupRepository groupRepo,
     ContributionRepository contributionRepo,
     PayoutRepository payoutRepo,
-    WithdrawalRepository withdrawalRepo) : ControllerBase
+    WithdrawalRepository withdrawalRepo,
+    DepositRepository depositRepo) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> GetAll()
@@ -51,8 +52,14 @@ public class TransactionsController(
         var myPayouts = allPayouts.Where(p => p.RecipientUserId == userId && p.Status == PayoutStatus.Disbursed);
 
         var withdrawals = await withdrawalRepo.GetByUserAsync(userId);
+        var deposits = await depositRepo.GetByUserAsync(userId);
 
         var entries = new List<TransactionEntry>();
+
+        foreach (var d in deposits)
+            entries.Add(new TransactionEntry(d.Id, "Deposit",
+                $"Wallet deposit — {d.Source}",
+                d.Amount, "In", Guid.Empty, "", null, d.Reference, d.CreatedAt));
 
         foreach (var c in myContributions)
             entries.Add(new TransactionEntry(c.Id, "Contribution",

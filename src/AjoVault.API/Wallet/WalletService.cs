@@ -13,6 +13,7 @@ public class WalletService(
     ContributionRepository contributionRepo,
     PayoutRepository payoutRepo,
     WithdrawalRepository withdrawalRepo,
+    DepositRepository depositRepo,
     ILogger<WalletService> logger,
     IServiceScopeFactory scopeFactory)
 {
@@ -33,12 +34,13 @@ public class WalletService(
         var totalIn = receivedPayouts.Sum(p => p.Amount);
 
         var totalWithdrawn = await withdrawalRepo.GetTotalWithdrawnAsync(userId);
+        var totalDeposited = await depositRepo.GetTotalDepositedAsync(userId);
 
         return new WalletResponse
         {
             UserId = userId,
-            Balance = totalIn - totalOut - totalWithdrawn,
-            TotalIn = totalIn,
+            Balance = totalDeposited + totalIn - totalOut - totalWithdrawn,
+            TotalIn = totalDeposited + totalIn,
             TotalOut = totalOut + totalWithdrawn,
             Currency = "NGN",
             ActiveGroups = myGroups.Count(g => g.Status == GroupStatus.Active),
@@ -120,7 +122,8 @@ public class WalletService(
         var allPayouts = await payoutRepo.GetByGroupIdsAsync(groupIds);
         var totalIn = allPayouts.Where(p => p.RecipientUserId == userId && p.Status == PayoutStatus.Disbursed).Sum(p => p.Amount);
         var totalWithdrawn = await withdrawalRepo.GetTotalWithdrawnAsync(userId);
-        var balance = totalIn - totalOut - totalWithdrawn;
+        var totalDeposited = await depositRepo.GetTotalDepositedAsync(userId);
+        var balance = totalDeposited + totalIn - totalOut - totalWithdrawn;
 
         if (amount > balance)
             throw new InvalidOperationException($"Insufficient balance. Available: ₦{balance:N2}");
