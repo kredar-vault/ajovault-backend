@@ -15,7 +15,8 @@ public class UserRepository(AppDbContext db)
         await db.Users.Where(u => ids.Contains(u.Id)).ToListAsync();
 
     public async Task<User?> FindByDvaAccountNumberAsync(string accountNumber) =>
-        await db.Users.FirstOrDefaultAsync(u => u.DvaAccountNumber == accountNumber);
+        await db.Users.FirstOrDefaultAsync(u => u.DvaAccountNumber == accountNumber
+            || u.BankAccountNumber == accountNumber);
 
     public async Task AddAsync(User user)
     {
