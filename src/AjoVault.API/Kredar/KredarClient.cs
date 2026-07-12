@@ -10,7 +10,7 @@ public class KredarClient(IHttpClientFactory httpFactory, IOptions<KredarSetting
 {
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 
-    public async Task<KredarCustomerResult?> CreateCustomerAsync(
+    public async Task<KredarCustomerResult?> CreateOrGetCustomerAsync(
         string firstName, string lastName, string email, string? phoneNumber = null, CancellationToken ct = default)
     {
         using var http = CreateClient();
@@ -20,38 +20,60 @@ public class KredarClient(IHttpClientFactory httpFactory, IOptions<KredarSetting
         using var response = await http.PostAsync("api/v1/customers", content, ct);
         var json = await response.Content.ReadAsStringAsync(ct);
 
-        if (!response.IsSuccessStatusCode)
+        if (response.IsSuccessStatusCode)
         {
-            logger.LogWarning("Kredar create-customer failed {Status}: {Body}", (int)response.StatusCode, json);
-            return null;
+            var envelope = JsonSerializer.Deserialize<KredarEnvelope<KredarCustomerResult>>(json, JsonOpts);
+            return envelope?.Data;
         }
 
-        var envelope = JsonSerializer.Deserialize<KredarEnvelope<KredarCustomerResult>>(json, JsonOpts);
-        return envelope?.Data;
+        // Customer likely already exists — fall back to lookup by email
+        logger.LogWarning("Kredar create-customer failed {Status}: {Body} — trying lookup by email", (int)response.StatusCode, json);
+        return await FindCustomerByEmailAsync(email, ct);
     }
 
-    public async Task<KredarDvaResult?> CreateDvaAsync(
+    private async Task<KredarCustomerResult?> FindCustomerByEmailAsync(string email, CancellationToken ct)
+    {
+        using var http = CreateClient();
+        using var response = await http.GetAsync("api/v1/customers", ct);
+        var json = await response.Content.ReadAsStringAsync(ct);
+
+        if (!response.IsSuccessStatusCode) return null;
+
+        var envelope = JsonSerializer.Deserialize<KredarEnvelope<List<KredarCustomerResult>>>(json, JsonOpts);
+        return envelope?.Data?.FirstOrDefault(c => string.Equals(c.Email, email, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public async Task<KredarDvaResult?> CreateOrGetDvaAsync(
         Guid customerId, decimal? expectedAmountNaira, CancellationToken ct = default)
     {
         using var http = CreateClient();
-        var body = JsonSerializer.Serialize(new
-        {
-            customerId,
-            expectedAmount = expectedAmountNaira
-        });
+        var body = JsonSerializer.Serialize(new { customerId, expectedAmount = expectedAmountNaira });
         using var content = new StringContent(body, Encoding.UTF8, "application/json");
 
         using var response = await http.PostAsync("api/v1/dedicated-accounts", content, ct);
         var json = await response.Content.ReadAsStringAsync(ct);
 
-        if (!response.IsSuccessStatusCode)
+        if (response.IsSuccessStatusCode)
         {
-            logger.LogWarning("Kredar create-dva failed {Status}: {Body}", (int)response.StatusCode, json);
-            return null;
+            var envelope = JsonSerializer.Deserialize<KredarEnvelope<KredarDvaResult>>(json, JsonOpts);
+            return envelope?.Data;
         }
 
-        var envelope = JsonSerializer.Deserialize<KredarEnvelope<KredarDvaResult>>(json, JsonOpts);
-        return envelope?.Data;
+        // DVA may already exist for this customer — look it up
+        logger.LogWarning("Kredar create-dva failed {Status}: {Body} — trying lookup by customerId", (int)response.StatusCode, json);
+        return await FindDvaByCustomerAsync(customerId, ct);
+    }
+
+    private async Task<KredarDvaResult?> FindDvaByCustomerAsync(Guid customerId, CancellationToken ct)
+    {
+        using var http = CreateClient();
+        using var response = await http.GetAsync("api/v1/dedicated-accounts", ct);
+        var json = await response.Content.ReadAsStringAsync(ct);
+
+        if (!response.IsSuccessStatusCode) return null;
+
+        var envelope = JsonSerializer.Deserialize<KredarEnvelope<List<KredarDvaResult>>>(json, JsonOpts);
+        return envelope?.Data?.FirstOrDefault(d => d.CustomerId == customerId);
     }
 
     private HttpClient CreateClient()
