@@ -51,6 +51,9 @@ public class GroupsService(
             Role = GroupMemberRole.Admin
         });
 
+        // Provision DVA for the circle immediately — every circle gets a bank account on creation
+        await ProvisionKredarDvaAsync(group);
+
         return await MapToResponseAsync(group);
     }
 
