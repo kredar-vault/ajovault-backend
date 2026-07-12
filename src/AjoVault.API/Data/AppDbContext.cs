@@ -17,6 +17,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Payout> Payouts => Set<Payout>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<Withdrawal> Withdrawals => Set<Withdrawal>();
+    public DbSet<Deposit> Deposits => Set<Deposit>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -79,6 +80,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasIndex(w => w.UserId);
             e.Property(w => w.Amount).HasPrecision(18, 2);
             e.Property(w => w.Status).HasMaxLength(20);
+        });
+
+        modelBuilder.Entity<Deposit>(e =>
+        {
+            e.HasKey(d => d.Id);
+            e.HasIndex(d => d.UserId);
+            e.HasIndex(d => d.Reference).IsUnique();
+            e.Property(d => d.Amount).HasPrecision(18, 2);
+            e.Property(d => d.Reference).HasMaxLength(100);
+            e.Property(d => d.Source).HasMaxLength(50);
         });
     }
 }

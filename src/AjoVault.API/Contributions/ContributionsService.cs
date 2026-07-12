@@ -2,6 +2,7 @@ using AjoVault.API.Auth;
 using AjoVault.API.Contributions.Dto;
 using AjoVault.API.Groups;
 using AjoVault.API.Payouts;
+using AjoVault.API.Wallet;
 
 namespace AjoVault.API.Contributions;
 
@@ -9,7 +10,9 @@ public class ContributionsService(
     ContributionRepository contributionRepo,
     GroupRepository groupRepo,
     UserRepository userRepo,
-    PayoutRepository payoutRepo)
+    PayoutRepository payoutRepo,
+    WithdrawalRepository withdrawalRepo,
+    DepositRepository depositRepo)
 {
     public async Task<ContributionResponse> RecordAsync(Guid userId, Guid groupId, RecordContributionRequest request)
     {
@@ -40,6 +43,20 @@ public class ContributionsService(
         var existing = await contributionRepo.FindAsync(groupId, userId, cycle);
         if (existing != null)
             throw new InvalidOperationException("You have already contributed for this cycle.");
+
+        // Check wallet balance
+        var myGroups = await groupRepo.GetByMemberAsync(userId);
+        var groupIds = myGroups.Select(g => g.Id).ToList();
+        var allContribs = await contributionRepo.GetAllByUserGroupsAsync(groupIds);
+        var totalPaid = allContribs.Where(c => c.UserId == userId && c.Status == ContributionStatus.Received).Sum(c => c.Amount);
+        var allPayouts = await payoutRepo.GetByGroupIdsAsync(groupIds);
+        var totalReceived = allPayouts.Where(p => p.RecipientUserId == userId && p.Status == PayoutStatus.Disbursed).Sum(p => p.Amount);
+        var totalDeposited = await depositRepo.GetTotalDepositedAsync(userId);
+        var totalWithdrawn = await withdrawalRepo.GetTotalWithdrawnAsync(userId);
+        var walletBalance = totalDeposited + totalReceived - totalPaid - totalWithdrawn;
+
+        if (walletBalance < group.ContributionAmount)
+            throw new InvalidOperationException($"Insufficient wallet balance. Available: ₦{walletBalance:N2}, Required: ₦{group.ContributionAmount:N2}. Deposit to your personal virtual account first.");
 
         var user = await userRepo.FindByIdAsync(userId);
         var reference = GenerateReference();

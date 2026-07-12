@@ -1,10 +1,12 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using AjoVault.API.Auth;
 using AjoVault.API.Common;
 using AjoVault.API.Config;
 using AjoVault.API.Contributions;
 using AjoVault.API.Groups;
+using AjoVault.API.Wallet;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
@@ -14,6 +16,8 @@ namespace AjoVault.API.Kredar;
 public class KredarWebhookController(
     GroupRepository groupRepo,
     ContributionRepository contributionRepo,
+    UserRepository userRepo,
+    DepositRepository depositRepo,
     IOptions<KredarSettings> settings,
     ILogger<KredarWebhookController> logger) : ControllerBase
 {
@@ -51,11 +55,35 @@ public class KredarWebhookController(
             return BadRequest(ApiResponse<object>.Fail("Missing accountNumber."));
         }
 
+        // Check if this credit is for a user's personal DVA
+        var user = await userRepo.FindByDvaAccountNumberAsync(accountNumber);
+        if (user != null)
+        {
+            if (await depositRepo.ExistsByReferenceAsync(txRef))
+                return Ok(ApiResponse<object>.Success(new { }, "Already recorded."));
+
+            var deposit = new Deposit
+            {
+                UserId = user.Id,
+                Amount = amountNaira,
+                Reference = txRef.Length > 100 ? txRef[..100] : txRef,
+                Source = "DVA"
+            };
+            await depositRepo.AddAsync(deposit);
+
+            logger.LogInformation(
+                "Kredar personal DVA credit ₦{Amount} from '{Sender}' → user {UserId}",
+                amountNaira, senderName, user.Id);
+
+            return Ok(ApiResponse<object>.Success(new { userId = user.Id, amountNaira }, "Wallet deposit recorded."));
+        }
+
+        // Otherwise check if it's a group DVA
         var group = await groupRepo.FindByDvaAccountNumberAsync(accountNumber);
         if (group == null)
         {
-            logger.LogWarning("No AjoVault group found for DVA {AccountNumber}", accountNumber);
-            return Ok(ApiResponse<object>.Success(new { }, "No matching group."));
+            logger.LogWarning("No AjoVault user or group found for DVA {AccountNumber}", accountNumber);
+            return Ok(ApiResponse<object>.Success(new { }, "No matching account."));
         }
 
         if (group.Status != Groups.GroupStatus.Active)
@@ -105,7 +133,7 @@ public class KredarWebhookController(
         await contributionRepo.AddAsync(contribution);
 
         logger.LogInformation(
-            "Kredar deposit ₦{Amount} from '{Sender}' → group {GroupId} cycle {Cycle} member {UserId}",
+            "Kredar group DVA deposit ₦{Amount} from '{Sender}' → group {GroupId} cycle {Cycle} member {UserId}",
             amountNaira, senderName, group.Id, cycleNumber, nextMember.UserId);
 
         return Ok(ApiResponse<object>.Success(new
