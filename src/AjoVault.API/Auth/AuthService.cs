@@ -1,8 +1,9 @@
 using AjoVault.API.Auth.Dto;
+using AjoVault.API.Kredar;
 
 namespace AjoVault.API.Auth;
 
-public class AuthService(UserRepository userRepo, JwtService jwtService, EmailService emailService)
+public class AuthService(UserRepository userRepo, JwtService jwtService, EmailService emailService, KredarClient kredarClient, ILogger<AuthService> logger)
 {
     public async Task<RegisterResponse> RegisterAsync(RegisterRequest request)
     {
@@ -63,6 +64,9 @@ public class AuthService(UserRepository userRepo, JwtService jwtService, EmailSe
         user.OtpCode = null;
         user.OtpExpiresAt = null;
         await userRepo.UpdateAsync(user);
+
+        // Provision personal DVA in background — don't block the response
+        _ = Task.Run(() => ProvisionUserDvaAsync(user));
 
         return new AuthResponse
         {
@@ -177,6 +181,44 @@ public class AuthService(UserRepository userRepo, JwtService jwtService, EmailSe
         user.OtpCode = null;
         user.OtpExpiresAt = null;
         await userRepo.UpdateAsync(user);
+    }
+
+    private async Task ProvisionUserDvaAsync(User user)
+    {
+        try
+        {
+            if (user.KredarCustomerId.HasValue) return; // already provisioned
+
+            var nameParts = user.FullName.Split(' ', 2);
+            var firstName = nameParts[0];
+            var lastName = nameParts.Length > 1 ? nameParts[1] : "User";
+
+            var customer = await kredarClient.CreateCustomerAsync(firstName, lastName, user.Email, user.PhoneNumber);
+            if (customer == null)
+            {
+                logger.LogWarning("Kredar customer creation returned null for user {UserId}", user.Id);
+                return;
+            }
+
+            var dva = await kredarClient.CreateDvaAsync(customer.Id, null);
+            if (dva == null)
+            {
+                logger.LogWarning("Kredar DVA creation returned null for user {UserId}", user.Id);
+                return;
+            }
+
+            user.KredarCustomerId = customer.Id;
+            user.DvaAccountNumber = dva.AccountNumber;
+            user.DvaBankName = dva.BankName;
+            user.DvaAccountName = dva.AccountName;
+            await userRepo.UpdateAsync(user);
+
+            logger.LogInformation("Personal DVA {AccountNumber} provisioned for user {UserId}", dva.AccountNumber, user.Id);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to provision personal DVA for user {UserId}", user.Id);
+        }
     }
 
     private async Task SendLoginOtpAsync(User user)
