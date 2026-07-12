@@ -347,6 +347,17 @@ public class GroupsService(
         };
     }
 
+    public async Task DeleteGroupAsync(Guid userId, Guid groupId)
+    {
+        var group = await groupRepo.FindByIdAsync(groupId)
+            ?? throw new KeyNotFoundException("Savings group not found.");
+
+        if (group.CreatedByUserId != userId)
+            throw new UnauthorizedAccessException("Only the group creator can delete this circle.");
+
+        await groupRepo.DeleteAsync(group);
+    }
+
     private async Task ProvisionKredarDvaAsync(SavingsGroup group)
     {
         try

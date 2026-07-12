@@ -111,4 +111,12 @@ public class GroupsController(GroupsService groupsService) : ControllerBase
         var member = await groupsService.UpdateMemberRoleAsync(userId, groupId, memberId, request.Role);
         return Ok(ApiResponse<GroupMemberDetailResponse>.Success(member, "Member role updated."));
     }
+
+    [HttpDelete("{groupId:guid}")]
+    public async Task<IActionResult> DeleteGroup(Guid groupId)
+    {
+        var userId = UserContext.GetUserId(HttpContext);
+        await groupsService.DeleteGroupAsync(userId, groupId);
+        return Ok(ApiResponse<object>.Success(new { }, "Circle deleted successfully."));
+    }
 }
