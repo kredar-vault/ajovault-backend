@@ -13,7 +13,8 @@ public class WalletService(
     ContributionRepository contributionRepo,
     PayoutRepository payoutRepo,
     KredarClient kredarClient,
-    ILogger<WalletService> logger)
+    ILogger<WalletService> logger,
+    IServiceScopeFactory scopeFactory)
 {
     public async Task<WalletResponse> GetWalletAsync(Guid userId)
     {
@@ -57,7 +58,7 @@ public class WalletService(
 
         // Auto-provision DVA for existing users who don't have one yet
         if (user.DvaAccountNumber == null)
-            _ = Task.Run(() => ProvisionDvaAsync(user));
+            _ = Task.Run(() => ProvisionDvaAsync(userId));
 
         return new VirtualAccountResponse
         {
@@ -68,32 +69,37 @@ public class WalletService(
         };
     }
 
-    private async Task ProvisionDvaAsync(User user)
+    private async Task ProvisionDvaAsync(Guid userId)
     {
         try
         {
-            if (user.KredarCustomerId.HasValue) return;
+            using var scope = scopeFactory.CreateScope();
+            var repo = scope.ServiceProvider.GetRequiredService<UserRepository>();
+            var kredar = scope.ServiceProvider.GetRequiredService<KredarClient>();
+
+            var user = await repo.FindByIdAsync(userId);
+            if (user == null || user.KredarCustomerId.HasValue) return;
 
             var nameParts = user.FullName.Split(' ', 2);
-            var customer = await kredarClient.CreateCustomerAsync(
+            var customer = await kredar.CreateCustomerAsync(
                 nameParts[0], nameParts.Length > 1 ? nameParts[1] : "User",
                 user.Email, user.PhoneNumber);
             if (customer == null) return;
 
-            var dva = await kredarClient.CreateDvaAsync(customer.Id, null);
+            var dva = await kredar.CreateDvaAsync(customer.Id, null);
             if (dva == null) return;
 
             user.KredarCustomerId = customer.Id;
             user.DvaAccountNumber = dva.AccountNumber;
             user.DvaBankName = dva.BankName;
             user.DvaAccountName = dva.AccountName;
-            await userRepo.UpdateAsync(user);
+            await repo.UpdateAsync(user);
 
-            logger.LogInformation("Personal DVA {AccountNumber} provisioned for user {UserId}", dva.AccountNumber, user.Id);
+            logger.LogInformation("Personal DVA {AccountNumber} provisioned for user {UserId}", dva.AccountNumber, userId);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to provision DVA for user {UserId}", user.Id);
+            logger.LogError(ex, "Failed to provision DVA for user {UserId}", userId);
         }
     }
 

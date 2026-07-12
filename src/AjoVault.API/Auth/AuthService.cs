@@ -3,7 +3,7 @@ using AjoVault.API.Kredar;
 
 namespace AjoVault.API.Auth;
 
-public class AuthService(UserRepository userRepo, JwtService jwtService, EmailService emailService, KredarClient kredarClient, ILogger<AuthService> logger)
+public class AuthService(UserRepository userRepo, JwtService jwtService, EmailService emailService, ILogger<AuthService> logger, IServiceScopeFactory scopeFactory)
 {
     public async Task<RegisterResponse> RegisterAsync(RegisterRequest request)
     {
@@ -66,7 +66,7 @@ public class AuthService(UserRepository userRepo, JwtService jwtService, EmailSe
         await userRepo.UpdateAsync(user);
 
         // Provision personal DVA in background — don't block the response
-        _ = Task.Run(() => ProvisionUserDvaAsync(user));
+        _ = Task.Run(() => ProvisionUserDvaAsync(user.Id));
 
         return new AuthResponse
         {
@@ -183,41 +183,37 @@ public class AuthService(UserRepository userRepo, JwtService jwtService, EmailSe
         await userRepo.UpdateAsync(user);
     }
 
-    private async Task ProvisionUserDvaAsync(User user)
+    private async Task ProvisionUserDvaAsync(Guid userId)
     {
         try
         {
-            if (user.KredarCustomerId.HasValue) return; // already provisioned
+            using var scope = scopeFactory.CreateScope();
+            var repo = scope.ServiceProvider.GetRequiredService<UserRepository>();
+            var kredar = scope.ServiceProvider.GetRequiredService<KredarClient>();
+
+            var user = await repo.FindByIdAsync(userId);
+            if (user == null || user.KredarCustomerId.HasValue) return;
 
             var nameParts = user.FullName.Split(' ', 2);
-            var firstName = nameParts[0];
-            var lastName = nameParts.Length > 1 ? nameParts[1] : "User";
+            var customer = await kredar.CreateCustomerAsync(
+                nameParts[0], nameParts.Length > 1 ? nameParts[1] : "User",
+                user.Email, user.PhoneNumber);
+            if (customer == null) return;
 
-            var customer = await kredarClient.CreateCustomerAsync(firstName, lastName, user.Email, user.PhoneNumber);
-            if (customer == null)
-            {
-                logger.LogWarning("Kredar customer creation returned null for user {UserId}", user.Id);
-                return;
-            }
-
-            var dva = await kredarClient.CreateDvaAsync(customer.Id, null);
-            if (dva == null)
-            {
-                logger.LogWarning("Kredar DVA creation returned null for user {UserId}", user.Id);
-                return;
-            }
+            var dva = await kredar.CreateDvaAsync(customer.Id, null);
+            if (dva == null) return;
 
             user.KredarCustomerId = customer.Id;
             user.DvaAccountNumber = dva.AccountNumber;
             user.DvaBankName = dva.BankName;
             user.DvaAccountName = dva.AccountName;
-            await userRepo.UpdateAsync(user);
+            await repo.UpdateAsync(user);
 
-            logger.LogInformation("Personal DVA {AccountNumber} provisioned for user {UserId}", dva.AccountNumber, user.Id);
+            logger.LogInformation("Personal DVA {AccountNumber} provisioned for user {UserId}", dva.AccountNumber, userId);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to provision personal DVA for user {UserId}", user.Id);
+            logger.LogError(ex, "Failed to provision personal DVA for user {UserId}", userId);
         }
     }
 
