@@ -61,9 +61,11 @@ public class WalletService(
         var user = await userRepo.FindByIdAsync(userId)
             ?? throw new KeyNotFoundException("User not found.");
 
-        // Auto-provision DVA for existing users who don't have one yet
         if (user.DvaAccountNumber == null)
-            _ = Task.Run(() => ProvisionDvaAsync(userId));
+        {
+            await ProvisionDvaAsync(userId);
+            user = await userRepo.FindByIdAsync(userId) ?? user;
+        }
 
         return new VirtualAccountResponse
         {
