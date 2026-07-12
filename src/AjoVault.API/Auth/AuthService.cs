@@ -148,8 +148,15 @@ public class AuthService(UserRepository userRepo, JwtService jwtService, EmailSe
     public async Task ForgotPasswordAsync(string email)
     {
         var user = await userRepo.FindByEmailAsync(email);
-        if (user == null) return;
-        // TODO: send reset email with token via Resend
+        if (user == null) return; // don't reveal whether email exists
+
+        var token = GenerateOtp();
+        user.OtpCode = token;
+        user.OtpExpiresAt = DateTime.UtcNow.AddMinutes(10);
+        await userRepo.UpdateAsync(user);
+
+        var resetLink = $"https://vault.staging.kredar.xyz/reset-password?email={Uri.EscapeDataString(email)}&token={token}";
+        await emailService.SendResetPasswordEmailAsync(user.Email, user.FullName, resetLink);
     }
 
     public async Task ResetPasswordAsync(ResetPasswordRequest request)
@@ -160,7 +167,15 @@ public class AuthService(UserRepository userRepo, JwtService jwtService, EmailSe
         var user = await userRepo.FindByEmailAsync(request.Email)
             ?? throw new KeyNotFoundException("No account found with that email.");
 
+        if (user.OtpCode != request.Token)
+            throw new InvalidOperationException("Invalid or expired reset link. Please request a new one.");
+
+        if (user.OtpExpiresAt == null || user.OtpExpiresAt < DateTime.UtcNow)
+            throw new InvalidOperationException("Reset link has expired. Please request a new one.");
+
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword, workFactor: 10);
+        user.OtpCode = null;
+        user.OtpExpiresAt = null;
         await userRepo.UpdateAsync(user);
     }
 
