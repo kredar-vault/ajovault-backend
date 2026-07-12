@@ -187,7 +187,7 @@ public class AuthService(UserRepository userRepo, JwtService jwtService, EmailSe
         await userRepo.UpdateAsync(user);
     }
 
-    private async Task ProvisionUserDvaAsync(Guid userId)
+    public async Task ProvisionUserDvaAsync(Guid userId)
     {
         try
         {
