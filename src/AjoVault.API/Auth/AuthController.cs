@@ -72,4 +72,13 @@ public class AuthController(AuthService authService) : ControllerBase
         await authService.ResetPasswordAsync(request);
         return Ok(ApiResponse<object>.Success(new { }, "Password reset successfully."));
     }
+
+    [HttpPost("provision-dva")]
+    [Authorize]
+    public async Task<IActionResult> ProvisionDva()
+    {
+        var userId = UserContext.GetUserId(HttpContext);
+        await authService.ProvisionUserDvaAsync(userId);
+        return Ok(ApiResponse<object>.Success(new { }, "Virtual account provisioning initiated."));
+    }
 }
