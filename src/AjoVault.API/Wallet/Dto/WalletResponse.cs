@@ -27,3 +27,19 @@ public class CreateVirtualAccountRequest
     public string AccountName { get; set; } = string.Empty;
     public string BankCode { get; set; } = string.Empty;
 }
+
+public class WithdrawRequest
+{
+    public decimal Amount { get; set; }
+}
+
+public class WithdrawalResponse
+{
+    public Guid Id { get; set; }
+    public decimal Amount { get; set; }
+    public string AccountNumber { get; set; } = string.Empty;
+    public string AccountName { get; set; } = string.Empty;
+    public string BankName { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+}

@@ -1,13 +1,15 @@
 using AjoVault.API.Auth;
 using AjoVault.API.Contributions.Dto;
 using AjoVault.API.Groups;
+using AjoVault.API.Payouts;
 
 namespace AjoVault.API.Contributions;
 
 public class ContributionsService(
     ContributionRepository contributionRepo,
     GroupRepository groupRepo,
-    UserRepository userRepo)
+    UserRepository userRepo,
+    PayoutRepository payoutRepo)
 {
     public async Task<ContributionResponse> RecordAsync(Guid userId, Guid groupId, RecordContributionRequest request)
     {
@@ -21,7 +23,21 @@ public class ContributionsService(
             ?? throw new UnauthorizedAccessException("You are not a member of this group.");
         _ = membership;
 
-        var existing = await contributionRepo.FindAsync(groupId, userId, request.CycleNumber);
+        int cycle;
+        if (request.CycleNumber is > 0)
+        {
+            cycle = request.CycleNumber.Value;
+        }
+        else
+        {
+            var payouts = await payoutRepo.GetByGroupAsync(groupId);
+            var current = payouts.FirstOrDefault(p => p.Status == PayoutStatus.Scheduled);
+            if (current == null)
+                throw new InvalidOperationException("No active cycle found for this group.");
+            cycle = current.CycleNumber;
+        }
+
+        var existing = await contributionRepo.FindAsync(groupId, userId, cycle);
         if (existing != null)
             throw new InvalidOperationException("You have already contributed for this cycle.");
 
@@ -32,7 +48,7 @@ public class ContributionsService(
         {
             GroupId = groupId,
             UserId = userId,
-            CycleNumber = request.CycleNumber,
+            CycleNumber = cycle,
             Amount = group.ContributionAmount,
             Status = ContributionStatus.Received,
             Reference = reference

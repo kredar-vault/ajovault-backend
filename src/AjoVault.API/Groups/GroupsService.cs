@@ -347,15 +347,40 @@ public class GroupsService(
         };
     }
 
+    public async Task DeleteGroupAsync(Guid userId, Guid groupId)
+    {
+        var group = await groupRepo.FindByIdAsync(groupId)
+            ?? throw new KeyNotFoundException("Savings group not found.");
+
+        if (group.CreatedByUserId != userId)
+            throw new UnauthorizedAccessException("Only the group creator can delete this circle.");
+
+        await groupRepo.DeleteAsync(group);
+    }
+
+    public async Task LeaveGroupAsync(Guid userId, Guid groupId)
+    {
+        var group = await groupRepo.FindByIdAsync(groupId)
+            ?? throw new KeyNotFoundException("Savings group not found.");
+
+        if (group.CreatedByUserId == userId)
+            throw new InvalidOperationException("The group creator cannot leave. Transfer ownership or delete the circle.");
+
+        var membership = await groupRepo.FindMemberAsync(groupId, userId)
+            ?? throw new KeyNotFoundException("You are not a member of this group.");
+
+        await groupRepo.DeleteMemberAsync(membership);
+    }
+
     private async Task ProvisionKredarDvaAsync(SavingsGroup group)
     {
         try
         {
             var email = group.ContactEmail ?? $"group-{group.Id:N}@ajovault.app";
             var phone = group.ContactPhone;
-            var nameParts = group.Name.Split(' ', 2);
+            var nameParts = group.Name.Trim().Split(' ', 2);
             var firstName = nameParts[0];
-            var lastName = nameParts.Length > 1 ? nameParts[1] : "Group";
+            var lastName = nameParts.Length > 1 && !string.IsNullOrWhiteSpace(nameParts[1]) ? nameParts[1].Trim() : "Group";
 
             var customer = await kredarClient.CreateOrGetCustomerAsync(firstName, lastName, email, phone);
             if (customer == null)

@@ -3,6 +3,7 @@ using AjoVault.API.Common;
 using AjoVault.API.Contributions;
 using AjoVault.API.Groups;
 using AjoVault.API.Payouts;
+using AjoVault.API.Wallet;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -16,7 +17,8 @@ public record TransactionEntry(Guid Id, string Type, string Description, decimal
 public class TransactionsController(
     GroupRepository groupRepo,
     ContributionRepository contributionRepo,
-    PayoutRepository payoutRepo) : ControllerBase
+    PayoutRepository payoutRepo,
+    WithdrawalRepository withdrawalRepo) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> GetAll()
@@ -48,6 +50,8 @@ public class TransactionsController(
         var allPayouts = await payoutRepo.GetByGroupIdsAsync(groupIds);
         var myPayouts = allPayouts.Where(p => p.RecipientUserId == userId && p.Status == PayoutStatus.Disbursed);
 
+        var withdrawals = await withdrawalRepo.GetByUserAsync(userId);
+
         var entries = new List<TransactionEntry>();
 
         foreach (var c in myContributions)
@@ -61,6 +65,11 @@ public class TransactionsController(
                 $"{groupLookup.GetValueOrDefault(p.GroupId, "Group")} — Cycle {p.CycleNumber} payout",
                 p.Amount, "In", p.GroupId, groupLookup.GetValueOrDefault(p.GroupId, ""),
                 p.CycleNumber, null, p.DisbursedAt ?? p.ScheduledDate));
+
+        foreach (var w in withdrawals)
+            entries.Add(new TransactionEntry(w.Id, "Withdrawal",
+                $"Withdrawal — {w.Status}",
+                w.Amount, "Out", Guid.Empty, "", null, null, w.CreatedAt));
 
         return entries.OrderByDescending(e => e.OccurredAt).ToList();
     }

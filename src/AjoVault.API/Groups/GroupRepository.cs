@@ -68,4 +68,17 @@ public class GroupRepository(AppDbContext db)
         db.GroupMembers.Update(member);
         await db.SaveChangesAsync();
     }
+
+    public async Task DeleteAsync(SavingsGroup group)
+    {
+        var members = await db.GroupMembers.Where(m => m.GroupId == group.Id).ToListAsync();
+        var contributions = await db.Contributions.Where(c => c.GroupId == group.Id).ToListAsync();
+        var payouts = await db.Payouts.Where(p => p.GroupId == group.Id).ToListAsync();
+
+        db.GroupMembers.RemoveRange(members);
+        db.Contributions.RemoveRange(contributions);
+        db.Payouts.RemoveRange(payouts);
+        db.SavingsGroups.Remove(group);
+        await db.SaveChangesAsync();
+    }
 }

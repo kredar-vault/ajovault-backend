@@ -47,4 +47,12 @@ public class WalletController(WalletService walletService) : ControllerBase
         var result = await walletService.SetBankAccountAsync(userId, request);
         return Ok(ApiResponse<VirtualAccountResponse>.Success(result, "Bank account saved."));
     }
+
+    [HttpPost("api/v1/wallet/withdraw")]
+    public async Task<IActionResult> Withdraw([FromBody] WithdrawRequest request)
+    {
+        var userId = UserContext.GetUserId(HttpContext);
+        var result = await walletService.WithdrawAsync(userId, request.Amount);
+        return Ok(ApiResponse<WithdrawalResponse>.Success(result, "Withdrawal initiated successfully."));
+    }
 }
