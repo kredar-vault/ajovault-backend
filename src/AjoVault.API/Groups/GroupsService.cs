@@ -110,6 +110,9 @@ public class GroupsService(
             CreatedAt = base_.CreatedAt,
             InviteCode = base_.InviteCode,
             InviteLink = base_.InviteLink,
+            DvaAccountNumber = base_.DvaAccountNumber,
+            DvaBankName = base_.DvaBankName,
+            DvaAccountName = base_.DvaAccountName,
             Members = members.Select(m => new GroupMemberResponse
             {
                 UserId = m.UserId,
