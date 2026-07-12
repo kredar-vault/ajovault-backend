@@ -31,8 +31,7 @@ public class WalletController(WalletService walletService) : ControllerBase
         }));
     }
 
-    [HttpGet("api/v1/wallet/virtual-account")]
-    [HttpGet("api/v1/wallets/virtual-account")]
+    [HttpGet("api/v1/wallet/dva")]
     public async Task<IActionResult> GetVirtualAccount()
     {
         var userId = UserContext.GetUserId(HttpContext);
@@ -40,19 +39,19 @@ public class WalletController(WalletService walletService) : ControllerBase
         return Ok(ApiResponse<VirtualAccountResponse>.Success(result));
     }
 
-    [HttpPost("api/v1/wallet/bank/lookup")]
+    [HttpPost("api/v1/wallet/payout-account/lookup")]
     public async Task<IActionResult> LookupBank([FromBody] BankLookupRequest request, CancellationToken ct)
     {
         var result = await walletService.LookupBankAsync(request.AccountNumber, request.BankCode, ct);
         return Ok(ApiResponse<BankLookupResponse>.Success(result));
     }
 
-    [HttpPost("api/v1/wallets/create-virtual-account")]
-    public async Task<IActionResult> CreateVirtualAccount([FromBody] CreateVirtualAccountRequest request, CancellationToken ct)
+    [HttpPost("api/v1/wallet/payout-account")]
+    public async Task<IActionResult> SavePayoutAccount([FromBody] CreateVirtualAccountRequest request, CancellationToken ct)
     {
         var userId = UserContext.GetUserId(HttpContext);
         var result = await walletService.SetBankAccountAsync(userId, request, ct);
-        return Ok(ApiResponse<VirtualAccountResponse>.Success(result, "Bank account saved."));
+        return Ok(ApiResponse<VirtualAccountResponse>.Success(result, "Payout account saved."));
     }
 
     [HttpPost("api/v1/wallet/withdraw")]
