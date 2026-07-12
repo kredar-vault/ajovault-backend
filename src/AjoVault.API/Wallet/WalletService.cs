@@ -1,6 +1,7 @@
 using AjoVault.API.Auth;
 using AjoVault.API.Contributions;
 using AjoVault.API.Groups;
+using AjoVault.API.Kredar;
 using AjoVault.API.Payouts;
 using AjoVault.API.Wallet.Dto;
 
@@ -10,7 +11,9 @@ public class WalletService(
     UserRepository userRepo,
     GroupRepository groupRepo,
     ContributionRepository contributionRepo,
-    PayoutRepository payoutRepo)
+    PayoutRepository payoutRepo,
+    KredarClient kredarClient,
+    ILogger<WalletService> logger)
 {
     public async Task<WalletResponse> GetWalletAsync(Guid userId)
     {
@@ -52,7 +55,10 @@ public class WalletService(
         var user = await userRepo.FindByIdAsync(userId)
             ?? throw new KeyNotFoundException("User not found.");
 
-        // Prefer Kredar-provisioned personal DVA; fall back to manually-set bank account
+        // Auto-provision DVA for existing users who don't have one yet
+        if (user.DvaAccountNumber == null)
+            _ = Task.Run(() => ProvisionDvaAsync(user));
+
         return new VirtualAccountResponse
         {
             AccountNumber = user.DvaAccountNumber ?? user.BankAccountNumber,
@@ -60,6 +66,35 @@ public class WalletService(
             Bank = user.DvaBankName ?? user.BankCode,
             IsSet = user.DvaAccountNumber != null || user.BankAccountNumber != null
         };
+    }
+
+    private async Task ProvisionDvaAsync(User user)
+    {
+        try
+        {
+            if (user.KredarCustomerId.HasValue) return;
+
+            var nameParts = user.FullName.Split(' ', 2);
+            var customer = await kredarClient.CreateCustomerAsync(
+                nameParts[0], nameParts.Length > 1 ? nameParts[1] : "User",
+                user.Email, user.PhoneNumber);
+            if (customer == null) return;
+
+            var dva = await kredarClient.CreateDvaAsync(customer.Id, null);
+            if (dva == null) return;
+
+            user.KredarCustomerId = customer.Id;
+            user.DvaAccountNumber = dva.AccountNumber;
+            user.DvaBankName = dva.BankName;
+            user.DvaAccountName = dva.AccountName;
+            await userRepo.UpdateAsync(user);
+
+            logger.LogInformation("Personal DVA {AccountNumber} provisioned for user {UserId}", dva.AccountNumber, user.Id);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to provision DVA for user {UserId}", user.Id);
+        }
     }
 
     public async Task<VirtualAccountResponse> SetBankAccountAsync(Guid userId, CreateVirtualAccountRequest request)
