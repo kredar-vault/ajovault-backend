@@ -357,7 +357,7 @@ public class GroupsService(
             var firstName = nameParts[0];
             var lastName = nameParts.Length > 1 ? nameParts[1] : "Group";
 
-            var customer = await kredarClient.CreateCustomerAsync(firstName, lastName, email, phone);
+            var customer = await kredarClient.CreateOrGetCustomerAsync(firstName, lastName, email, phone);
             if (customer == null)
             {
                 logger.LogWarning("Kredar customer creation returned null for group {GroupId}", group.Id);
@@ -365,7 +365,7 @@ public class GroupsService(
             }
 
             var totalPot = group.ContributionAmount * group.MaxMembers;
-            var dva = await kredarClient.CreateDvaAsync(customer.Id, totalPot);
+            var dva = await kredarClient.CreateOrGetDvaAsync(customer.Id, totalPot);
             if (dva == null)
             {
                 logger.LogWarning("Kredar DVA creation returned null for group {GroupId}", group.Id);
