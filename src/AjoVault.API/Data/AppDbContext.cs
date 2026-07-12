@@ -3,6 +3,7 @@ using AjoVault.API.Contributions;
 using AjoVault.API.Groups;
 using AjoVault.API.Notifications;
 using AjoVault.API.Payouts;
+using AjoVault.API.Wallet;
 using Microsoft.EntityFrameworkCore;
 
 namespace AjoVault.API.Data;
@@ -15,6 +16,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Contribution> Contributions => Set<Contribution>();
     public DbSet<Payout> Payouts => Set<Payout>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<Withdrawal> Withdrawals => Set<Withdrawal>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -69,6 +71,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasIndex(p => new { p.GroupId, p.CycleNumber }).IsUnique();
             e.Property(p => p.Status).HasConversion<string>();
             e.Property(p => p.Amount).HasPrecision(18, 2);
+        });
+
+        modelBuilder.Entity<Withdrawal>(e =>
+        {
+            e.HasKey(w => w.Id);
+            e.HasIndex(w => w.UserId);
+            e.Property(w => w.Amount).HasPrecision(18, 2);
+            e.Property(w => w.Status).HasMaxLength(20);
         });
     }
 }

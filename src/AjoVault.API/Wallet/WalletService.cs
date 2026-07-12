@@ -12,6 +12,7 @@ public class WalletService(
     GroupRepository groupRepo,
     ContributionRepository contributionRepo,
     PayoutRepository payoutRepo,
+    WithdrawalRepository withdrawalRepo,
     ILogger<WalletService> logger,
     IServiceScopeFactory scopeFactory)
 {
@@ -31,12 +32,14 @@ public class WalletService(
         var receivedPayouts = allPayouts.Where(p => p.RecipientUserId == userId && p.Status == PayoutStatus.Disbursed);
         var totalIn = receivedPayouts.Sum(p => p.Amount);
 
+        var totalWithdrawn = await withdrawalRepo.GetTotalWithdrawnAsync(userId);
+
         return new WalletResponse
         {
             UserId = userId,
-            Balance = totalIn - totalOut,
+            Balance = totalIn - totalOut - totalWithdrawn,
             TotalIn = totalIn,
-            TotalOut = totalOut,
+            TotalOut = totalOut + totalWithdrawn,
             Currency = "NGN",
             ActiveGroups = myGroups.Count(g => g.Status == GroupStatus.Active),
             TotalGroups = myGroups.Count,
@@ -100,6 +103,41 @@ public class WalletService(
         {
             logger.LogError(ex, "Failed to provision DVA for user {UserId}", userId);
         }
+    }
+
+    public async Task<WithdrawalResponse> WithdrawAsync(Guid userId, decimal amount)
+    {
+        var user = await userRepo.FindByIdAsync(userId)
+            ?? throw new KeyNotFoundException("User not found.");
+
+        if (amount <= 0)
+            throw new InvalidOperationException("Amount must be greater than zero.");
+
+        var myGroups = await groupRepo.GetByMemberAsync(userId);
+        var groupIds = myGroups.Select(g => g.Id).ToList();
+        var allContributions = await contributionRepo.GetAllByUserGroupsAsync(groupIds);
+        var totalOut = allContributions.Where(c => c.UserId == userId && c.Status == ContributionStatus.Received).Sum(c => c.Amount);
+        var allPayouts = await payoutRepo.GetByGroupIdsAsync(groupIds);
+        var totalIn = allPayouts.Where(p => p.RecipientUserId == userId && p.Status == PayoutStatus.Disbursed).Sum(p => p.Amount);
+        var totalWithdrawn = await withdrawalRepo.GetTotalWithdrawnAsync(userId);
+        var balance = totalIn - totalOut - totalWithdrawn;
+
+        if (amount > balance)
+            throw new InvalidOperationException($"Insufficient balance. Available: ₦{balance:N2}");
+
+        var withdrawal = new Withdrawal { UserId = userId, Amount = amount };
+        await withdrawalRepo.AddAsync(withdrawal);
+
+        return new WithdrawalResponse
+        {
+            Id = withdrawal.Id,
+            Amount = withdrawal.Amount,
+            AccountNumber = user.DvaAccountNumber ?? user.BankAccountNumber ?? "—",
+            AccountName = user.DvaAccountName ?? user.BankAccountName ?? user.FullName,
+            BankName = user.DvaBankName ?? user.BankCode ?? "—",
+            Status = withdrawal.Status,
+            CreatedAt = withdrawal.CreatedAt
+        };
     }
 
     public async Task<VirtualAccountResponse> SetBankAccountAsync(Guid userId, CreateVirtualAccountRequest request)
