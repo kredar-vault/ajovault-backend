@@ -192,15 +192,15 @@ public class AuthService(UserRepository userRepo, JwtService jwtService, EmailSe
             var kredar = scope.ServiceProvider.GetRequiredService<KredarClient>();
 
             var user = await repo.FindByIdAsync(userId);
-            if (user == null || user.KredarCustomerId.HasValue) return;
+            if (user == null || user.DvaAccountNumber != null) return;
 
             var nameParts = user.FullName.Split(' ', 2);
-            var customer = await kredar.CreateCustomerAsync(
+            var customer = await kredar.CreateOrGetCustomerAsync(
                 nameParts[0], nameParts.Length > 1 ? nameParts[1] : "User",
                 user.Email, user.PhoneNumber);
             if (customer == null) return;
 
-            var dva = await kredar.CreateDvaAsync(customer.Id, null);
+            var dva = await kredar.CreateOrGetDvaAsync(customer.Id, null);
             if (dva == null) return;
 
             user.KredarCustomerId = customer.Id;
