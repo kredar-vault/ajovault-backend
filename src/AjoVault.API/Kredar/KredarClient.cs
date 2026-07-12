@@ -11,10 +11,10 @@ public class KredarClient(IHttpClientFactory httpFactory, IOptions<KredarSetting
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 
     public async Task<KredarCustomerResult?> CreateCustomerAsync(
-        string firstName, string lastName, string email, CancellationToken ct = default)
+        string firstName, string lastName, string email, string? phoneNumber = null, CancellationToken ct = default)
     {
         using var http = CreateClient();
-        var body = JsonSerializer.Serialize(new { firstName, lastName, email });
+        var body = JsonSerializer.Serialize(new { firstName, lastName, email, phoneNumber });
         using var content = new StringContent(body, Encoding.UTF8, "application/json");
 
         using var response = await http.PostAsync("api/v1/customers", content, ct);
