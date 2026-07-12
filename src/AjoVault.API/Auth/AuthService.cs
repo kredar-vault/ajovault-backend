@@ -84,7 +84,7 @@ public class AuthService(UserRepository userRepo, JwtService jwtService, EmailSe
         await SendOtpAsync(user);
     }
 
-    public async Task<AuthResponse> LoginAsync(LoginRequest request)
+    public async Task<LoginResponse> LoginAsync(LoginRequest request)
     {
         var user = await userRepo.FindByEmailAsync(request.Email)
             ?? throw new UnauthorizedAccessException("Invalid email or password.");
@@ -95,6 +95,36 @@ public class AuthService(UserRepository userRepo, JwtService jwtService, EmailSe
         if (!user.IsVerified)
             throw new InvalidOperationException("Please verify your email before logging in.");
 
+        await SendLoginOtpAsync(user);
+
+        return new LoginResponse
+        {
+            Email = user.Email,
+            Message = "A verification code has been sent to your email."
+        };
+    }
+
+    public async Task<AuthResponse> VerifyLoginOtpAsync(VerifyLoginOtpRequest request)
+    {
+        var user = await userRepo.FindByEmailAsync(request.Email)
+            ?? throw new UnauthorizedAccessException("Invalid email or password.");
+
+        if (!user.IsVerified)
+            throw new InvalidOperationException("Please verify your email before logging in.");
+
+        if (user.OtpCode == null || user.OtpExpiresAt == null)
+            throw new InvalidOperationException("No OTP found. Please log in again.");
+
+        if (DateTime.UtcNow > user.OtpExpiresAt)
+            throw new InvalidOperationException("OTP has expired. Please log in again.");
+
+        if (user.OtpCode != request.Otp.Trim())
+            throw new InvalidOperationException("Invalid OTP. Please try again.");
+
+        user.OtpCode = null;
+        user.OtpExpiresAt = null;
+        await userRepo.UpdateAsync(user);
+
         return new AuthResponse
         {
             Token = jwtService.GenerateToken(user.Id, user.Email),
@@ -104,11 +134,29 @@ public class AuthService(UserRepository userRepo, JwtService jwtService, EmailSe
         };
     }
 
+    public async Task ResendLoginOtpAsync(string email)
+    {
+        var user = await userRepo.FindByEmailAsync(email)
+            ?? throw new UnauthorizedAccessException("Invalid email or password.");
+
+        if (!user.IsVerified)
+            throw new InvalidOperationException("Please verify your email before logging in.");
+
+        await SendLoginOtpAsync(user);
+    }
+
     public async Task ForgotPasswordAsync(string email)
     {
         var user = await userRepo.FindByEmailAsync(email);
-        if (user == null) return;
-        // TODO: send reset email with token via Resend
+        if (user == null) return; // don't reveal whether email exists
+
+        var token = GenerateOtp();
+        user.OtpCode = token;
+        user.OtpExpiresAt = DateTime.UtcNow.AddMinutes(10);
+        await userRepo.UpdateAsync(user);
+
+        var resetLink = $"https://vault.staging.kredar.xyz/reset-password?email={Uri.EscapeDataString(email)}&token={token}";
+        await emailService.SendResetPasswordEmailAsync(user.Email, user.FullName, resetLink);
     }
 
     public async Task ResetPasswordAsync(ResetPasswordRequest request)
@@ -119,8 +167,25 @@ public class AuthService(UserRepository userRepo, JwtService jwtService, EmailSe
         var user = await userRepo.FindByEmailAsync(request.Email)
             ?? throw new KeyNotFoundException("No account found with that email.");
 
+        if (user.OtpCode != request.Token)
+            throw new InvalidOperationException("Invalid or expired reset link. Please request a new one.");
+
+        if (user.OtpExpiresAt == null || user.OtpExpiresAt < DateTime.UtcNow)
+            throw new InvalidOperationException("Reset link has expired. Please request a new one.");
+
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword, workFactor: 10);
+        user.OtpCode = null;
+        user.OtpExpiresAt = null;
         await userRepo.UpdateAsync(user);
+    }
+
+    private async Task SendLoginOtpAsync(User user)
+    {
+        var otp = GenerateOtp();
+        user.OtpCode = otp;
+        user.OtpExpiresAt = DateTime.UtcNow.AddMinutes(10);
+        await userRepo.UpdateAsync(user);
+        await emailService.SendLoginOtpEmailAsync(user.Email, user.FullName, otp);
     }
 
     private async Task SendOtpAsync(User user)
