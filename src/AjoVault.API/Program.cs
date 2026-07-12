@@ -84,6 +84,7 @@ builder.Services.AddScoped<PayoutRepository>();
 builder.Services.AddScoped<PayoutsService>();
 builder.Services.AddScoped<DashboardService>();
 builder.Services.AddScoped<AccountService>();
+builder.Services.AddScoped<WithdrawalRepository>();
 builder.Services.AddScoped<WalletService>();
 
 

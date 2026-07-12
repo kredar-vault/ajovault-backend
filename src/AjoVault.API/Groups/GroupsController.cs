@@ -77,7 +77,9 @@ public class GroupsController(GroupsService groupsService) : ControllerBase
         return Ok(ApiResponse<object>.Success(new
         {
             group.Id, group.Name, group.Description, group.PrimaryPurpose,
-            group.ContributionAmount, group.Frequency, group.MaxMembers, group.Status
+            group.ContributionAmount, group.Frequency, group.MaxMembers, group.Status,
+            group.CreatedAt, group.InviteCode, group.CurrentMembers, group.CreatedByUserId,
+            group.DvaAccountNumber, group.DvaBankName, group.DvaAccountName
         }));
     }
 
@@ -110,5 +112,21 @@ public class GroupsController(GroupsService groupsService) : ControllerBase
         var userId = UserContext.GetUserId(HttpContext);
         var member = await groupsService.UpdateMemberRoleAsync(userId, groupId, memberId, request.Role);
         return Ok(ApiResponse<GroupMemberDetailResponse>.Success(member, "Member role updated."));
+    }
+
+    [HttpDelete("{groupId:guid}")]
+    public async Task<IActionResult> DeleteGroup(Guid groupId)
+    {
+        var userId = UserContext.GetUserId(HttpContext);
+        await groupsService.DeleteGroupAsync(userId, groupId);
+        return Ok(ApiResponse<object>.Success(new { }, "Circle deleted successfully."));
+    }
+
+    [HttpPost("{groupId:guid}/leave")]
+    public async Task<IActionResult> LeaveGroup(Guid groupId)
+    {
+        var userId = UserContext.GetUserId(HttpContext);
+        await groupsService.LeaveGroupAsync(userId, groupId);
+        return Ok(ApiResponse<object>.Success(new { }, "You have left the circle."));
     }
 }
