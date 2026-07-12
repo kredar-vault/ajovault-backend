@@ -353,9 +353,9 @@ public class GroupsService(
         {
             var email = group.ContactEmail ?? $"group-{group.Id:N}@ajovault.app";
             var phone = group.ContactPhone;
-            var nameParts = group.Name.Split(' ', 2);
+            var nameParts = group.Name.Trim().Split(' ', 2);
             var firstName = nameParts[0];
-            var lastName = nameParts.Length > 1 ? nameParts[1] : "Group";
+            var lastName = nameParts.Length > 1 && !string.IsNullOrWhiteSpace(nameParts[1]) ? nameParts[1].Trim() : "Group";
 
             var customer = await kredarClient.CreateOrGetCustomerAsync(firstName, lastName, email, phone);
             if (customer == null)
