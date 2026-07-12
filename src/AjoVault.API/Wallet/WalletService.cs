@@ -170,14 +170,34 @@ public class WalletService(
         };
     }
 
-    public async Task<VirtualAccountResponse> SetBankAccountAsync(Guid userId, CreateVirtualAccountRequest request)
+    public async Task<BankLookupResponse> LookupBankAsync(string accountNumber, string bankCode, CancellationToken ct = default)
+    {
+        var result = await kredarClient.LookupBankAccountAsync(accountNumber.Trim(), bankCode.Trim(), ct)
+            ?? throw new InvalidOperationException("Could not verify account. Check the account number and bank code, then try again.");
+
+        return new BankLookupResponse
+        {
+            AccountName = result.AccountName,
+            AccountNumber = result.AccountNumber,
+            BankCode = result.BankCode,
+        };
+    }
+
+    public async Task<VirtualAccountResponse> SetBankAccountAsync(Guid userId, CreateVirtualAccountRequest request, CancellationToken ct = default)
     {
         var user = await userRepo.FindByIdAsync(userId)
             ?? throw new KeyNotFoundException("User not found.");
 
-        user.BankAccountNumber = request.AccountNumber.Trim();
-        user.BankAccountName = request.AccountName.Trim();
-        user.BankCode = request.BankCode.Trim();
+        var accountNumber = request.AccountNumber.Trim();
+        var bankCode = request.BankCode.Trim();
+
+        // Verify the account exists and get the official name from the bank
+        var lookup = await kredarClient.LookupBankAccountAsync(accountNumber, bankCode, ct);
+        var verifiedName = lookup?.AccountName ?? request.AccountName.Trim();
+
+        user.BankAccountNumber = accountNumber;
+        user.BankAccountName = verifiedName;
+        user.BankCode = bankCode;
         await userRepo.UpdateAsync(user);
 
         return new VirtualAccountResponse
