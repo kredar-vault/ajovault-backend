@@ -65,15 +65,20 @@ public class AuthService(UserRepository userRepo, JwtService jwtService, EmailSe
         user.OtpExpiresAt = null;
         await userRepo.UpdateAsync(user);
 
-        // Provision personal DVA in background — don't block the response
-        _ = Task.Run(() => ProvisionUserDvaAsync(user.Id));
+        // Provision DVA synchronously — user must have one before entering the app
+        try { await DoProvisionDvaAsync(user.Id); }
+        catch (Exception ex) { logger.LogError(ex, "DVA provisioning failed on signup for user {UserId} — recoverable via /auth/provision-dva", user.Id); }
 
+        var fresh = await userRepo.FindByIdAsync(user.Id);
         return new AuthResponse
         {
             Token = jwtService.GenerateToken(user.Id, user.Email),
             UserId = user.Id,
             FullName = user.FullName,
-            Email = user.Email
+            Email = user.Email,
+            DvaAccountNumber = fresh?.DvaAccountNumber,
+            DvaAccountName = fresh?.DvaAccountName,
+            DvaBankName = fresh?.DvaBankName,
         };
     }
 
@@ -129,16 +134,23 @@ public class AuthService(UserRepository userRepo, JwtService jwtService, EmailSe
         user.OtpExpiresAt = null;
         await userRepo.UpdateAsync(user);
 
-        // Re-provision DVA if it failed during signup
+        // Provision DVA synchronously if missing — handles cases where signup provisioning failed
         if (user.DvaAccountNumber == null)
-            _ = Task.Run(() => ProvisionUserDvaAsync(user.Id));
+        {
+            try { await DoProvisionDvaAsync(user.Id); }
+            catch (Exception ex) { logger.LogError(ex, "DVA provisioning failed on login for user {UserId} — recoverable via /auth/provision-dva", user.Id); }
+        }
 
+        var fresh = await userRepo.FindByIdAsync(user.Id);
         return new AuthResponse
         {
             Token = jwtService.GenerateToken(user.Id, user.Email),
             UserId = user.Id,
             FullName = user.FullName,
-            Email = user.Email
+            Email = fresh?.Email ?? user.Email,
+            DvaAccountNumber = fresh?.DvaAccountNumber,
+            DvaAccountName = fresh?.DvaAccountName,
+            DvaBankName = fresh?.DvaBankName,
         };
     }
 
@@ -189,36 +201,38 @@ public class AuthService(UserRepository userRepo, JwtService jwtService, EmailSe
 
     public async Task ProvisionUserDvaAsync(Guid userId)
     {
-        try
-        {
-            using var scope = scopeFactory.CreateScope();
-            var repo = scope.ServiceProvider.GetRequiredService<UserRepository>();
-            var kredar = scope.ServiceProvider.GetRequiredService<KredarClient>();
+        try { await DoProvisionDvaAsync(userId); }
+        catch (Exception ex) { logger.LogError(ex, "Failed to provision personal DVA for user {UserId}", userId); }
+    }
 
-            var user = await repo.FindByIdAsync(userId);
-            if (user == null || user.DvaAccountNumber != null) return;
+    public async Task DoProvisionDvaAsync(Guid userId)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<UserRepository>();
+        var kredar = scope.ServiceProvider.GetRequiredService<KredarClient>();
 
-            var nameParts = user.FullName.Trim().Split(' ', 2);
-            var firstName = nameParts[0];
-            var lastName = nameParts.Length > 1 && !string.IsNullOrWhiteSpace(nameParts[1]) ? nameParts[1].Trim() : "User";
-            var customer = await kredar.CreateOrGetCustomerAsync(firstName, lastName, user.Email, user.PhoneNumber);
-            if (customer == null) return;
+        var user = await repo.FindByIdAsync(userId)
+            ?? throw new KeyNotFoundException("User not found.");
 
-            var dva = await kredar.CreateOrGetDvaAsync(customer.Id, null);
-            if (dva == null) return;
+        if (user.DvaAccountNumber != null) return;
 
-            user.KredarCustomerId = customer.Id;
-            user.DvaAccountNumber = dva.AccountNumber;
-            user.DvaBankName = dva.BankName;
-            user.DvaAccountName = dva.AccountName;
-            await repo.UpdateAsync(user);
+        var nameParts = user.FullName.Trim().Split(' ', 2);
+        var firstName = nameParts[0];
+        var lastName = nameParts.Length > 1 && !string.IsNullOrWhiteSpace(nameParts[1]) ? nameParts[1].Trim() : "User";
 
-            logger.LogInformation("Personal DVA {AccountNumber} provisioned for user {UserId}", dva.AccountNumber, userId);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to provision personal DVA for user {UserId}", userId);
-        }
+        var customer = await kredar.CreateOrGetCustomerAsync(firstName, lastName, user.Email, user.PhoneNumber)
+            ?? throw new InvalidOperationException("Failed to create or find Kredar customer for this user.");
+
+        var dva = await kredar.CreateOrGetDvaAsync(customer.Id, null)
+            ?? throw new InvalidOperationException("Failed to create or find a dedicated virtual account for this user.");
+
+        user.KredarCustomerId = customer.Id;
+        user.DvaAccountNumber = dva.AccountNumber;
+        user.DvaBankName = dva.BankName;
+        user.DvaAccountName = dva.AccountName;
+        await repo.UpdateAsync(user);
+
+        logger.LogInformation("Personal DVA {AccountNumber} provisioned for user {UserId}", dva.AccountNumber, userId);
     }
 
     private async Task SendLoginOtpAsync(User user)
