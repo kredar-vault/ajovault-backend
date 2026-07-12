@@ -358,6 +358,20 @@ public class GroupsService(
         await groupRepo.DeleteAsync(group);
     }
 
+    public async Task LeaveGroupAsync(Guid userId, Guid groupId)
+    {
+        var group = await groupRepo.FindByIdAsync(groupId)
+            ?? throw new KeyNotFoundException("Savings group not found.");
+
+        if (group.CreatedByUserId == userId)
+            throw new InvalidOperationException("The group creator cannot leave. Transfer ownership or delete the circle.");
+
+        var membership = await groupRepo.FindMemberAsync(groupId, userId)
+            ?? throw new KeyNotFoundException("You are not a member of this group.");
+
+        await groupRepo.DeleteMemberAsync(membership);
+    }
+
     private async Task ProvisionKredarDvaAsync(SavingsGroup group)
     {
         try
