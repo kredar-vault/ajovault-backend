@@ -9,7 +9,7 @@ public class UserRepository(AppDbContext db)
         await db.Users.FirstOrDefaultAsync(u => u.Email == email);
 
     public async Task<User?> FindByIdAsync(Guid id) =>
-        await db.Users.FindAsync(id);
+        await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == id);
 
     public async Task<List<User>> FindByIdsAsync(IEnumerable<Guid> ids) =>
         await db.Users.Where(u => ids.Contains(u.Id)).ToListAsync();
