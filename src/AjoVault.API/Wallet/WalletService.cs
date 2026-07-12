@@ -52,12 +52,13 @@ public class WalletService(
         var user = await userRepo.FindByIdAsync(userId)
             ?? throw new KeyNotFoundException("User not found.");
 
+        // Prefer Kredar-provisioned personal DVA; fall back to manually-set bank account
         return new VirtualAccountResponse
         {
-            AccountNumber = user.BankAccountNumber,
-            AccountName = user.BankAccountName,
-            BankCode = user.BankCode,
-            IsSet = user.BankAccountNumber != null
+            AccountNumber = user.DvaAccountNumber ?? user.BankAccountNumber,
+            AccountName = user.DvaAccountName ?? user.BankAccountName,
+            Bank = user.DvaBankName ?? user.BankCode,
+            IsSet = user.DvaAccountNumber != null || user.BankAccountNumber != null
         };
     }
 
