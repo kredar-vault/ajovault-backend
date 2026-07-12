@@ -129,6 +129,10 @@ public class AuthService(UserRepository userRepo, JwtService jwtService, EmailSe
         user.OtpExpiresAt = null;
         await userRepo.UpdateAsync(user);
 
+        // Re-provision DVA if it failed during signup
+        if (user.DvaAccountNumber == null)
+            _ = Task.Run(() => ProvisionUserDvaAsync(user.Id));
+
         return new AuthResponse
         {
             Token = jwtService.GenerateToken(user.Id, user.Email),
