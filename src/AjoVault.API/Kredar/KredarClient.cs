@@ -76,6 +76,44 @@ public class KredarClient(IHttpClientFactory httpFactory, IOptions<KredarSetting
         return envelope?.Data?.FirstOrDefault(d => d.CustomerId == customerId);
     }
 
+    public async Task<KredarTransferResult> InitiateTransferAsync(
+        string merchantTxRef, decimal amount, string accountNumber, string bankCode,
+        string? narration = null, CancellationToken ct = default)
+    {
+        using var http = CreateClient();
+        var body = JsonSerializer.Serialize(new { merchantTxRef, amount, accountNumber, bankCode, narration });
+        using var content = new StringContent(body, Encoding.UTF8, "application/json");
+
+        using var response = await http.PostAsync("api/v1/transfers/bank", content, ct);
+        var json = await response.Content.ReadAsStringAsync(ct);
+
+        logger.LogInformation("Kredar transfer {Status}: {Body}", (int)response.StatusCode, json);
+
+        if (response.IsSuccessStatusCode)
+        {
+            var envelope = JsonSerializer.Deserialize<KredarEnvelope<KredarTransferResult>>(json, JsonOpts);
+            return envelope?.Data ?? new KredarTransferResult(merchantTxRef, "Failed", "Empty response", null);
+        }
+
+        logger.LogWarning("Kredar transfer failed {Status}: {Body}", (int)response.StatusCode, json);
+        return new KredarTransferResult(merchantTxRef, "Failed", json, null);
+    }
+
+    public async Task<KredarBankLookupResult?> LookupBankAccountAsync(
+        string accountNumber, string bankCode, CancellationToken ct = default)
+    {
+        using var http = CreateClient();
+        var body = JsonSerializer.Serialize(new { accountNumber, bankCode });
+        using var content = new StringContent(body, Encoding.UTF8, "application/json");
+
+        using var response = await http.PostAsync("api/v1/transfers/bank/lookup", content, ct);
+        var json = await response.Content.ReadAsStringAsync(ct);
+
+        if (!response.IsSuccessStatusCode) return null;
+        var envelope = JsonSerializer.Deserialize<KredarEnvelope<KredarBankLookupResult>>(json, JsonOpts);
+        return envelope?.Data;
+    }
+
     private HttpClient CreateClient()
     {
         var cfg = settings.Value;
@@ -89,3 +127,5 @@ public class KredarClient(IHttpClientFactory httpFactory, IOptions<KredarSetting
 public record KredarEnvelope<T>(bool IsSuccess, string? Message, T? Data);
 public record KredarCustomerResult(Guid Id, string FirstName, string LastName, string Email);
 public record KredarDvaResult(Guid Id, Guid CustomerId, string AccountNumber, string BankName, string AccountName);
+public record KredarTransferResult(string MerchantTxRef, string Status, string? FailureReason, string? ProviderReference);
+public record KredarBankLookupResult(string AccountName, string AccountNumber, string BankCode);
