@@ -14,7 +14,7 @@ public class KredarClient(IHttpClientFactory httpFactory, IOptions<KredarSetting
         string firstName, string lastName, string email, string? phoneNumber = null, CancellationToken ct = default)
     {
         using var http = CreateClient();
-        var body = JsonSerializer.Serialize(new { firstName, lastName, email, phoneNumber });
+        var body = JsonSerializer.Serialize(new { firstName, lastName, email, phoneNumber = NormalizePhone(phoneNumber) });
         using var content = new StringContent(body, Encoding.UTF8, "application/json");
 
         using var response = await http.PostAsync("api/v1/customers", content, ct);
@@ -118,6 +118,18 @@ public class KredarClient(IHttpClientFactory httpFactory, IOptions<KredarSetting
         if (!response.IsSuccessStatusCode) return null;
         var envelope = JsonSerializer.Deserialize<KredarEnvelope<KredarBankLookupResult>>(json, JsonOpts);
         return envelope?.Data;
+    }
+
+    private static string? NormalizePhone(string? phone)
+    {
+        if (string.IsNullOrWhiteSpace(phone)) return null;
+        phone = phone.Trim().Replace(" ", "").Replace("-", "");
+        if (phone.StartsWith("+")) return phone;                         // already international
+        if (phone.StartsWith("0") && phone.Length == 11)
+            return "+234" + phone[1..];                                  // 080XXXXXXXX → +23480XXXXXXXX
+        if (phone.StartsWith("234") && phone.Length == 13)
+            return "+" + phone;                                          // 23480XXXXXXXX → +23480XXXXXXXX
+        return null;                                                     // unrecognised — omit rather than fail
     }
 
     private HttpClient CreateClient()
