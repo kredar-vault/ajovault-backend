@@ -27,6 +27,6 @@ public class WithdrawalRepository(AppDbContext db)
 
     public async Task<decimal> GetTotalWithdrawnAsync(Guid userId)
         => await db.Withdrawals
-            .Where(w => w.UserId == userId && w.Status == "Completed")
+            .Where(w => w.UserId == userId && (w.Status == "Completed" || w.Status == "Pending"))
             .SumAsync(w => (decimal?)w.Amount) ?? 0;
 }
