@@ -89,6 +89,9 @@ builder.Services.AddScoped<DepositRepository>();
 builder.Services.AddScoped<WalletService>();
 
 
+// Auto-register webhook endpoint in Kredar on startup so deposits are credited
+builder.Services.AddHostedService<WebhookRegistrationService>();
+
 // Exception handler
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
