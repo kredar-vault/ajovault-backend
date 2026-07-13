@@ -11,5 +11,5 @@ public class ContributionResponse
     public decimal Amount { get; set; }
     public string Status { get; set; } = string.Empty;
     public string Reference { get; set; } = string.Empty;
-    public DateTime PaidAt { get; set; }
+    public DateTime Time { get; set; }
 }

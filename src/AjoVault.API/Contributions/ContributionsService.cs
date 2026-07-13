@@ -129,7 +129,7 @@ public class ContributionsService(
         Amount = c.Amount,
         Status = c.Status.ToString(),
         Reference = c.Reference,
-        PaidAt = c.PaidAt
+        Time = c.PaidAt
     };
 
     private static string GenerateReference()
