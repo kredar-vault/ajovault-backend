@@ -11,6 +11,7 @@ public class GroupDashboardResponse
 public class GroupDashboardStats
 {
     public decimal TotalContribution { get; set; }
+    public decimal CircleBalance { get; set; }
     public int TotalMembers { get; set; }
     public int PendingContributions { get; set; }
     public int UpcomingPayouts { get; set; }
