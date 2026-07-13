@@ -88,7 +88,7 @@ public class DashboardService(
         };
     }
 
-    public async Task<object> GetByGroupAsync(Guid userId, Guid groupId)
+    public async Task<GroupDashboardResponse> GetByGroupAsync(Guid userId, Guid groupId)
     {
         var group = await groupRepo.FindByIdAsync(groupId)
             ?? throw new KeyNotFoundException("Savings group not found.");
@@ -98,38 +98,87 @@ public class DashboardService(
         var payouts = await payoutRepo.GetByGroupAsync(groupId);
 
         var currentCycle = GetCurrentCycle(group);
+        var isOverdue = group.Status == GroupStatus.Active && IsOverdue(group, currentCycle);
         var cycleContribs = contributions.Where(c => c.CycleNumber == currentCycle).ToList();
-        var paidCount = cycleContribs.Count;
-        var totalCollected = cycleContribs.Sum(c => c.Amount);
+        var paidUserIds = cycleContribs.Select(c => c.UserId).ToHashSet();
 
-        var myMember = members.FirstOrDefault(m => m.UserId == userId);
-        var myContribThisCycle = cycleContribs.Any(c => c.UserId == userId);
+        var receivedCount = paidUserIds.Count;
+        var pendingCount = 0;
+        var missedCount = 0;
+        foreach (var m in members)
+        {
+            if (!paidUserIds.Contains(m.UserId))
+            {
+                if (isOverdue) missedCount++;
+                else pendingCount++;
+            }
+        }
 
-        var nextPayout = payouts.Where(p => p.Status == PayoutStatus.Scheduled).OrderBy(p => p.CycleNumber).FirstOrDefault();
+        var totalCollected = contributions
+            .Where(c => c.Status == ContributionStatus.Received)
+            .Sum(c => c.Amount);
+
+        var scheduledPayouts = payouts.Where(p => p.Status == PayoutStatus.Scheduled).OrderBy(p => p.CycleNumber).ToList();
+        var nextPayout = scheduledPayouts.FirstOrDefault();
         User? nextRecipient = nextPayout != null ? await userRepo.FindByIdAsync(nextPayout.RecipientUserId) : null;
 
-        return new
+        // Build activity: one row per member for the current cycle
+        var memberIds = members.Select(m => m.UserId).Distinct().ToList();
+        var memberUsers = await userRepo.FindByIdsAsync(memberIds);
+        var userLookup = memberUsers.ToDictionary(u => u.Id, u => u.FullName);
+        var contribLookup = cycleContribs.ToDictionary(c => c.UserId, c => c);
+
+        var cycleDays = group.Frequency switch
         {
-            groupId = group.Id,
-            groupName = group.Name,
-            status = group.Status.ToString(),
-            currentCycle,
-            totalMembers = members.Count,
-            paidThisCycle = paidCount,
-            pendingThisCycle = members.Count - paidCount,
-            totalCollectedThisCycle = totalCollected,
-            myContributionStatus = myMember == null ? "not_member"
-                : myContribThisCycle ? "paid" : "pending",
-            nextPayout = nextPayout == null ? null : new
+            ContributionFrequency.Weekly => 7,
+            ContributionFrequency.BiWeekly => 14,
+            _ => 30
+        };
+        var cycleEndDate = group.StartDate.HasValue
+            ? group.StartDate.Value.AddDays(cycleDays * currentCycle).ToString("yyyy-MM-dd")
+            : DateTime.UtcNow.ToString("yyyy-MM-dd");
+
+        var activity = members.Select(m =>
+        {
+            contribLookup.TryGetValue(m.UserId, out var c);
+            var status = c != null ? "Received" : isOverdue ? "Missed" : "Pending";
+            return new GroupActivityRow
             {
-                cycleNumber = nextPayout.CycleNumber,
-                recipient = nextRecipient?.FullName ?? "Unknown",
-                amount = nextPayout.Amount,
-                scheduledDate = nextPayout.ScheduledDate
+                Id = c?.Id.ToString() ?? m.UserId.ToString(),
+                Member = userLookup.GetValueOrDefault(m.UserId, "Unknown"),
+                Group = group.Name,
+                DueDate = c != null ? c.PaidAt.ToString("yyyy-MM-dd") : cycleEndDate,
+                Amount = c?.Amount ?? group.ContributionAmount,
+                Status = status
+            };
+        }).ToList();
+
+        return new GroupDashboardResponse
+        {
+            Stats = new GroupDashboardStats
+            {
+                TotalContribution = totalCollected,
+                TotalMembers = members.Count,
+                PendingContributions = pendingCount + missedCount,
+                UpcomingPayouts = scheduledPayouts.Count
             },
-            dvaAccountNumber = group.DvaAccountNumber,
-            dvaBankName = group.DvaBankName,
-            dvaAccountName = group.DvaAccountName
+            Progress = new GroupContributionProgress
+            {
+                Month = DateTime.UtcNow.ToString("MMMM"),
+                ReceivedCount = receivedCount,
+                PendingCount = pendingCount,
+                MissedCount = missedCount,
+                TotalCount = members.Count
+            },
+            Payout = new GroupNextPayout
+            {
+                RecipientName = nextRecipient?.FullName ?? "None",
+                Amount = nextPayout?.Amount ?? 0,
+                DaysRemaining = nextPayout != null
+                    ? Math.Max(0, (nextPayout.ScheduledDate - DateTime.UtcNow).Days)
+                    : 0
+            },
+            Activity = activity
         };
     }
 
