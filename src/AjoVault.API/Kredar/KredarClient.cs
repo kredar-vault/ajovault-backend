@@ -23,17 +23,15 @@ public class KredarClient(IHttpClientFactory httpFactory, IOptions<KredarSetting
         if (response.IsSuccessStatusCode)
         {
             var envelope = JsonSerializer.Deserialize<KredarEnvelope<KredarCustomerResult>>(json, JsonOpts);
-            if (envelope?.Data == null)
-                logger.LogError("Kredar POST /customers returned {Status} but Data was null. Body: {Body}", (int)response.StatusCode, json);
-            return envelope?.Data;
+            if (envelope?.Data != null) return envelope.Data;
+            throw new InvalidOperationException($"Kredar POST /customers returned {(int)response.StatusCode} but Data was null. Body: {json}");
         }
 
-        // Customer likely already exists — fall back to lookup by email
+        // Customer likely already exists (409) — fall back to lookup by email
         logger.LogWarning("Kredar POST /customers {Status}: {Body} — trying email lookup for {Email}", (int)response.StatusCode, json, email);
         var found = await FindCustomerByEmailAsync(email, ct);
-        if (found == null)
-            logger.LogError("Kredar email lookup also null for {Email} — POST was {Status}: {Body}", email, (int)response.StatusCode, json);
-        return found;
+        if (found != null) return found;
+        throw new InvalidOperationException($"Kredar email lookup also returned nothing for {email} — POST /customers was {(int)response.StatusCode}: {json}");
     }
 
     private async Task<KredarCustomerResult?> FindCustomerByEmailAsync(string email, CancellationToken ct)
@@ -61,14 +59,15 @@ public class KredarClient(IHttpClientFactory httpFactory, IOptions<KredarSetting
         if (response.IsSuccessStatusCode)
         {
             var envelope = JsonSerializer.Deserialize<KredarEnvelope<KredarDvaResult>>(json, JsonOpts);
-            return envelope?.Data;
+            if (envelope?.Data != null) return envelope.Data;
+            throw new InvalidOperationException($"Kredar POST /dedicated-accounts returned {(int)response.StatusCode} but Data was null. Body: {json}");
         }
 
         // DVA may already exist for this customer — look it up
         logger.LogWarning("Kredar create-dva failed {Status}: {Body} — trying lookup by customerId {CustomerId}", (int)response.StatusCode, json, customerId);
         var found = await FindDvaByCustomerAsync(customerId, ct);
-        if (found == null) logger.LogError("Kredar DVA lookup also failed for customerId {CustomerId} — no DVA found in tenant", customerId);
-        return found;
+        if (found != null) return found;
+        throw new InvalidOperationException($"Kredar DVA lookup also returned nothing for customerId {customerId} — POST was {(int)response.StatusCode}: {json}");
     }
 
     private async Task<KredarDvaResult?> FindDvaByCustomerAsync(Guid customerId, CancellationToken ct)
