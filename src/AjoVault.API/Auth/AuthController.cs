@@ -85,7 +85,8 @@ public class AuthController(AuthService authService) : ControllerBase
         }
         catch (Exception ex)
         {
-            return Ok(ApiResponse<object>.Success(new { error = ex.Message, type = ex.GetType().Name }, $"DVA provisioning failed: {ex.Message}"));
+            var detail = ex.InnerException != null ? $"{ex.Message} → {ex.InnerException.Message}" : ex.Message;
+            return Ok(ApiResponse<object>.Success(new { error = detail, type = ex.GetType().Name }, $"DVA provisioning failed: {detail}"));
         }
     }
 }
