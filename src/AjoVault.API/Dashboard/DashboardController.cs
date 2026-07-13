@@ -23,6 +23,6 @@ public class DashboardController(DashboardService dashboardService) : Controller
     {
         var userId = UserContext.GetUserId(HttpContext);
         var result = await dashboardService.GetByGroupAsync(userId, groupId);
-        return Ok(ApiResponse<object>.Success(result));
+        return Ok(ApiResponse<GroupDashboardResponse>.Success(result));
     }
 }
