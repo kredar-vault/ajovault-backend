@@ -45,7 +45,9 @@ public class KredarWebhookController(
             return BadRequest(ApiResponse<object>.Fail("Missing data field."));
 
         var accountNumber = GetStr(data, "accountNumber");
-        var amountNaira = GetDecimal(data, "amountNaira") ?? GetDecimal(data, "amountPaid") ?? 0;
+        var grossNaira = GetDecimal(data, "amountNaira") ?? GetDecimal(data, "amountPaid") ?? 0;
+        var feeNaira = GetDecimal(data, "feeNaira") ?? 0;
+        var amountNaira = grossNaira - feeNaira;
         var txRef = GetStr(data, "kredarReference") ?? GetStr(data, "transactionReference") ?? Guid.NewGuid().ToString();
         var senderName = GetStr(data, "transferName") ?? "Unknown";
 
@@ -72,8 +74,8 @@ public class KredarWebhookController(
             await depositRepo.AddAsync(deposit);
 
             logger.LogInformation(
-                "Kredar personal DVA credit ₦{Amount} from '{Sender}' → user {UserId}",
-                amountNaira, senderName, user.Id);
+                "Kredar personal DVA credit ₦{Net} (gross ₦{Gross} - fee ₦{Fee}) from '{Sender}' → user {UserId}",
+                amountNaira, grossNaira, feeNaira, senderName, user.Id);
 
             return Ok(ApiResponse<object>.Success(new { userId = user.Id, amountNaira }, "Wallet deposit recorded."));
         }
