@@ -9,7 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace AjoVault.API.Transactions;
 
-public record TransactionEntry(Guid Id, string Type, string Description, decimal Amount, string Direction, Guid GroupId, string GroupName, int? CycleNumber, string? Reference, DateTime OccurredAt);
+public record TransactionEntry(Guid Id, string Type, string Description, decimal Amount, string Direction, Guid GroupId, string GroupName, int? CycleNumber, string? Reference, DateTime OccurredAt, string Status);
 
 [ApiController]
 [Route("api/v1/transactions")]
@@ -59,24 +59,24 @@ public class TransactionsController(
         foreach (var d in deposits)
             entries.Add(new TransactionEntry(d.Id, "Deposit",
                 $"Wallet deposit — {d.Source}",
-                d.Amount, "In", Guid.Empty, "", null, d.Reference, d.CreatedAt));
+                d.Amount, "In", Guid.Empty, "", null, d.Reference, d.CreatedAt, "Completed"));
 
         foreach (var c in myContributions)
             entries.Add(new TransactionEntry(c.Id, "Contribution",
                 $"{groupLookup.GetValueOrDefault(c.GroupId, "Group")} — Cycle {c.CycleNumber} contribution",
                 c.Amount, "Out", c.GroupId, groupLookup.GetValueOrDefault(c.GroupId, ""),
-                c.CycleNumber, c.Reference, c.PaidAt));
+                c.CycleNumber, c.Reference, c.PaidAt, "Completed"));
 
         foreach (var p in myPayouts)
             entries.Add(new TransactionEntry(p.Id, "Payout",
                 $"{groupLookup.GetValueOrDefault(p.GroupId, "Group")} — Cycle {p.CycleNumber} payout",
                 p.Amount, "In", p.GroupId, groupLookup.GetValueOrDefault(p.GroupId, ""),
-                p.CycleNumber, null, p.DisbursedAt ?? p.ScheduledDate));
+                p.CycleNumber, null, p.DisbursedAt ?? p.ScheduledDate, "Completed"));
 
         foreach (var w in withdrawals)
             entries.Add(new TransactionEntry(w.Id, "Withdrawal",
-                $"Withdrawal — {w.Status}",
-                w.Amount, "Out", Guid.Empty, "", null, null, w.CreatedAt));
+                "Withdrawal",
+                w.Amount, "Out", Guid.Empty, "", null, null, w.CreatedAt, w.Status));
 
         return entries.OrderByDescending(e => e.OccurredAt).ToList();
     }
