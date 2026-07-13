@@ -78,7 +78,14 @@ public class AuthController(AuthService authService) : ControllerBase
     public async Task<IActionResult> ProvisionDva()
     {
         var userId = UserContext.GetUserId(HttpContext);
-        await authService.ProvisionUserDvaAsync(userId);
-        return Ok(ApiResponse<object>.Success(new { }, "Virtual account provisioning initiated."));
+        try
+        {
+            await authService.DoProvisionDvaAsync(userId);
+            return Ok(ApiResponse<object>.Success(new { }, "Virtual account set up successfully."));
+        }
+        catch (Exception ex)
+        {
+            return Ok(ApiResponse<object>.Success(new { error = ex.Message, type = ex.GetType().Name }, $"DVA provisioning failed: {ex.Message}"));
+        }
     }
 }
