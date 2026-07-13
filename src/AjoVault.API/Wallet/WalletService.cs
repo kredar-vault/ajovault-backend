@@ -91,10 +91,18 @@ public class WalletService(
             var firstName = nameParts[0];
             var lastName = nameParts.Length > 1 && !string.IsNullOrWhiteSpace(nameParts[1]) ? nameParts[1].Trim() : "User";
             var customer = await kredar.CreateOrGetCustomerAsync(firstName, lastName, user.Email, user.PhoneNumber);
-            if (customer == null) return;
+            if (customer == null)
+            {
+                logger.LogError("Kredar returned null customer for user {UserId} ({Email}) — create and lookup both failed", userId, user.Email);
+                return;
+            }
 
             var dva = await kredar.CreateOrGetDvaAsync(customer.Id, null);
-            if (dva == null) return;
+            if (dva == null)
+            {
+                logger.LogError("Kredar returned null DVA for customer {CustomerId} (user {UserId}) — create and lookup both failed", customer.Id, userId);
+                return;
+            }
 
             user.KredarCustomerId = customer.Id;
             user.DvaAccountNumber = dva.AccountNumber;
