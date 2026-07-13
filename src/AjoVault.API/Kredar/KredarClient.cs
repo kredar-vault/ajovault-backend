@@ -27,8 +27,10 @@ public class KredarClient(IHttpClientFactory httpFactory, IOptions<KredarSetting
         }
 
         // Customer likely already exists — fall back to lookup by email
-        logger.LogWarning("Kredar create-customer failed {Status}: {Body} — trying lookup by email", (int)response.StatusCode, json);
-        return await FindCustomerByEmailAsync(email, ct);
+        logger.LogWarning("Kredar create-customer failed {Status}: {Body} — trying lookup by email for {Email}", (int)response.StatusCode, json, email);
+        var found = await FindCustomerByEmailAsync(email, ct);
+        if (found == null) logger.LogError("Kredar customer lookup by email also failed for {Email} — customer not found in tenant", email);
+        return found;
     }
 
     private async Task<KredarCustomerResult?> FindCustomerByEmailAsync(string email, CancellationToken ct)
@@ -60,8 +62,10 @@ public class KredarClient(IHttpClientFactory httpFactory, IOptions<KredarSetting
         }
 
         // DVA may already exist for this customer — look it up
-        logger.LogWarning("Kredar create-dva failed {Status}: {Body} — trying lookup by customerId", (int)response.StatusCode, json);
-        return await FindDvaByCustomerAsync(customerId, ct);
+        logger.LogWarning("Kredar create-dva failed {Status}: {Body} — trying lookup by customerId {CustomerId}", (int)response.StatusCode, json, customerId);
+        var found = await FindDvaByCustomerAsync(customerId, ct);
+        if (found == null) logger.LogError("Kredar DVA lookup also failed for customerId {CustomerId} — no DVA found in tenant", customerId);
+        return found;
     }
 
     private async Task<KredarDvaResult?> FindDvaByCustomerAsync(Guid customerId, CancellationToken ct)
