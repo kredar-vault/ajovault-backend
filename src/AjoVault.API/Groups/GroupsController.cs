@@ -76,10 +76,22 @@ public class GroupsController(GroupsService groupsService) : ControllerBase
         var group = await groupsService.GetByIdAsync(groupId);
         return Ok(ApiResponse<object>.Success(new
         {
-            group.Id, group.Name, group.Description, group.PrimaryPurpose,
-            group.ContributionAmount, group.Frequency, group.MaxMembers, group.Status,
-            group.CreatedAt, group.InviteCode, group.CurrentMembers, group.CreatedByUserId,
-            group.DvaAccountNumber, group.DvaBankName, group.DvaAccountName
+            groupId = group.Id,
+            groupName = group.Name,
+            description = group.Description,
+            purpose = group.PrimaryPurpose?.ToString().ToLower(),
+            contributionAmount = group.ContributionAmount,
+            frequency = group.Frequency.ToString().ToLower(),
+            maxMembers = group.MaxMembers,
+            status = group.Status.ToString(),
+            createdAt = group.CreatedAt,
+            startDate = group.StartDate,
+            inviteCode = group.InviteCode,
+            currentMembers = group.CurrentMembers,
+            createdByUserId = group.CreatedByUserId,
+            dvaAccountNumber = group.DvaAccountNumber,
+            dvaBankName = group.DvaBankName,
+            dvaAccountName = group.DvaAccountName
         }));
     }
 
