@@ -118,6 +118,12 @@ public class DashboardService(
             .Where(c => c.Status == ContributionStatus.Received)
             .Sum(c => c.Amount);
 
+        var totalDisbursed = payouts
+            .Where(p => p.Status == PayoutStatus.Disbursed)
+            .Sum(p => p.Amount);
+
+        var circleBalance = totalCollected - totalDisbursed;
+
         var scheduledPayouts = payouts.Where(p => p.Status == PayoutStatus.Scheduled).OrderBy(p => p.CycleNumber).ToList();
         var nextPayout = scheduledPayouts.FirstOrDefault();
         User? nextRecipient = nextPayout != null ? await userRepo.FindByIdAsync(nextPayout.RecipientUserId) : null;
@@ -158,6 +164,7 @@ public class DashboardService(
             Stats = new GroupDashboardStats
             {
                 TotalContribution = totalCollected,
+                CircleBalance = circleBalance,
                 TotalMembers = members.Count,
                 PendingContributions = pendingCount + missedCount,
                 UpcomingPayouts = scheduledPayouts.Count

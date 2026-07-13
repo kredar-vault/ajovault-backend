@@ -1,10 +1,11 @@
 using AjoVault.API.Auth;
+using AjoVault.API.Contributions;
 using AjoVault.API.Groups;
 using AjoVault.API.Payouts.Dto;
 
 namespace AjoVault.API.Payouts;
 
-public class PayoutsService(PayoutRepository payoutRepo, GroupRepository groupRepo, UserRepository userRepo)
+public class PayoutsService(PayoutRepository payoutRepo, GroupRepository groupRepo, UserRepository userRepo, ContributionRepository contributionRepo)
 {
     public async Task<List<RotationMemberResponse>> GetByGroupAsync(Guid groupId)
     {
@@ -71,6 +72,27 @@ public class PayoutsService(PayoutRepository payoutRepo, GroupRepository groupRe
 
         if (payout.Status == PayoutStatus.Disbursed)
             throw new InvalidOperationException("This payout has already been disbursed.");
+
+        // All members must have contributed for this cycle before disbursing
+        var members = await groupRepo.GetMembersAsync(groupId);
+        var cycleContributions = await contributionRepo.GetByCycleAsync(groupId, payout.CycleNumber);
+        var paidMemberCount = cycleContributions.Count(c => c.Status == ContributionStatus.Received);
+
+        if (paidMemberCount < members.Count)
+            throw new InvalidOperationException(
+                $"Cannot disburse: only {paidMemberCount} of {members.Count} members have contributed for cycle {payout.CycleNumber}. " +
+                $"All members must contribute before the payout is released.");
+
+        // Circle balance must cover this payout
+        var allContributions = await contributionRepo.GetByGroupAsync(groupId);
+        var allPayouts = await payoutRepo.GetByGroupAsync(groupId);
+        var totalContributed = allContributions.Where(c => c.Status == ContributionStatus.Received).Sum(c => c.Amount);
+        var totalDisbursed = allPayouts.Where(p => p.Status == PayoutStatus.Disbursed).Sum(p => p.Amount);
+        var circleBalance = totalContributed - totalDisbursed;
+
+        if (circleBalance < payout.Amount)
+            throw new InvalidOperationException(
+                $"Insufficient circle balance. Pool has ₦{circleBalance:N2} but payout is ₦{payout.Amount:N2}.");
 
         payout.Status = PayoutStatus.Disbursed;
         payout.DisbursedAt = DateTime.UtcNow;

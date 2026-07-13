@@ -21,6 +21,11 @@ public class ContributionRepository(AppDbContext db)
         await db.Contributions.FirstOrDefaultAsync(c =>
             c.GroupId == groupId && c.UserId == userId && c.CycleNumber == cycleNumber);
 
+    public async Task<List<Contribution>> GetByCycleAsync(Guid groupId, int cycleNumber) =>
+        await db.Contributions
+            .Where(c => c.GroupId == groupId && c.CycleNumber == cycleNumber)
+            .ToListAsync();
+
     public async Task<List<Contribution>> GetAllByUserGroupsAsync(IEnumerable<Guid> groupIds) =>
         await db.Contributions
             .Where(c => groupIds.Contains(c.GroupId))
