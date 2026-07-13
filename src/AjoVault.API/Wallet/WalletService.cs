@@ -152,7 +152,9 @@ public class WalletService(
                 txRef, amount, user.BankAccountNumber, user.BankCode,
                 $"AjoVault wallet withdrawal");
 
-            withdrawal.Status = result.Status == "Succeeded" ? "Completed" : "Failed";
+            withdrawal.Status = result.Status == "Succeeded" ? "Completed"
+                : result.Status == "Pending" ? "Pending"
+                : "Failed";
             withdrawal.KredarReference = result.ProviderReference ?? txRef;
             withdrawal.FailureReason = result.FailureReason;
         }
@@ -166,7 +168,7 @@ public class WalletService(
         await withdrawalRepo.UpdateAsync(withdrawal);
 
         if (withdrawal.Status == "Failed")
-            throw new InvalidOperationException($"Transfer failed: {withdrawal.FailureReason ?? "Unknown error"}. Please try again.");
+            throw new InvalidOperationException($"Transfer failed: {withdrawal.FailureReason ?? "Unknown error"}. Please try again or contact support.");
 
         return new WithdrawalResponse
         {
