@@ -21,14 +21,14 @@ public class PayoutsController(PayoutsService payoutsService) : ControllerBase
     public async Task<IActionResult> GetByGroup(Guid groupId)
     {
         var payouts = await payoutsService.GetByGroupAsync(groupId);
-        return Ok(ApiResponse<List<PayoutResponse>>.Success(payouts));
+        return Ok(ApiResponse<List<RotationMemberResponse>>.Success(payouts));
     }
 
     [HttpGet("api/v1/groups/{groupId:guid}/payouts/current")]
     public async Task<IActionResult> GetCurrentPayout(Guid groupId)
     {
-        var payout = await payoutsService.GetCurrentPayoutAsync(groupId);
-        return Ok(ApiResponse<PayoutResponse?>.Success(payout));
+        var summary = await payoutsService.GetCurrentPayoutAsync(groupId);
+        return Ok(ApiResponse<PayoutSummaryResponse>.Success(summary));
     }
 
     [HttpGet("api/v1/groups/{groupId:guid}/payouts/upcoming")]
