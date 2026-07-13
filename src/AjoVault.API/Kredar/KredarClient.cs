@@ -23,13 +23,16 @@ public class KredarClient(IHttpClientFactory httpFactory, IOptions<KredarSetting
         if (response.IsSuccessStatusCode)
         {
             var envelope = JsonSerializer.Deserialize<KredarEnvelope<KredarCustomerResult>>(json, JsonOpts);
+            if (envelope?.Data == null)
+                logger.LogError("Kredar POST /customers returned {Status} but Data was null. Body: {Body}", (int)response.StatusCode, json);
             return envelope?.Data;
         }
 
         // Customer likely already exists — fall back to lookup by email
-        logger.LogWarning("Kredar create-customer failed {Status}: {Body} — trying lookup by email for {Email}", (int)response.StatusCode, json, email);
+        logger.LogWarning("Kredar POST /customers {Status}: {Body} — trying email lookup for {Email}", (int)response.StatusCode, json, email);
         var found = await FindCustomerByEmailAsync(email, ct);
-        if (found == null) logger.LogError("Kredar customer lookup by email also failed for {Email} — customer not found in tenant", email);
+        if (found == null)
+            logger.LogError("Kredar email lookup also null for {Email} — POST was {Status}: {Body}", email, (int)response.StatusCode, json);
         return found;
     }
 
